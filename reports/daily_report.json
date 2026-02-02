@@ -1,0 +1,15 @@
+{
+  "min_level": "INFO",
+  "totals": {
+    "INFO": 2,
+    "WARNING": 2,
+    "ERROR": 3
+  },
+  "per_file": {
+    "/Users/brianhill/log-project/app.log": {
+      "INFO": 2,
+      "WARNING": 2,
+      "ERROR": 3
+    }
+  }
+}
