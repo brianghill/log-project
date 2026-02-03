@@ -1,0 +1,12 @@
+# Logs and runtime output
+logs/*.log
+reports/*.log
+reports/*.json
+reports/*.txt
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Secrets
+config/config.conf

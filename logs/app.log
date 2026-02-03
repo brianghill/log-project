@@ -1,8 +1,0 @@
-2026-01-24 08:00:01 INFO Server started
-2026-01-24 08:01:15 WARNING Disk space low
-2026-01-24 08:02:22 ERROR Failed to connect to database
-2026-01-24 08:03:10 INFO User login successful
-2026-01-24 08:04:55 ERROR Timeout while calling API
-2026-01-24 08:05:42 WARNING High memory usage detected
-ERROR Something broke
-ERROR Database connection failed

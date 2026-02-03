@@ -8,7 +8,7 @@ from datetime import datetime
 from email.message import EmailMessage
 import configparser
 
-CONFIG_PATH = os.path.expanduser("~/log-project/config.conf")
+CONFIG_PATH = os.path.expanduser("~/log-project/config/config.conf")
 
 config = configparser.ConfigParser()
 config.read(CONFIG_PATH)
