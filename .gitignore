@@ -12,8 +12,11 @@ reports/clients/
 reports/internal/*.SAMPLE_LOCAL
 reports/internal/daily_internal_snapshot.md
 
+# Local config
+config/config.conf
+
 # Personal docs
 brians_docs/
 
-# Mac
+# Mac junk
 .DS_Store
