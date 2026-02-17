@@ -1,195 +1,107 @@
 #!/usr/bin/env python3
 
 import os
-import shutil
-import smtplib
-import subprocess
-from datetime import datetime
-from email.message import EmailMessage
+import json
 import configparser
+import psutil
+import datetime
+import smtplib
+from email.message import EmailMessage
 
-CONFIG_PATH = os.path.expanduser("~/log-project/config/config.conf")
+# ---------------- CONFIG ----------------
+
+BASE_DIR = os.path.expanduser("~/log-project")
+CONFIG_PATH = os.path.join(BASE_DIR, "config/config.conf")
+STATE_FILE = os.path.join(BASE_DIR, "alerts_state.json")
+HEALTH_LOG = os.path.join(BASE_DIR, "logs/health.log")
 
 config = configparser.ConfigParser()
 config.read(CONFIG_PATH)
-cfg = config["DEFAULT"]
 
-timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+CPU_THRESHOLD = float(config["DEFAULT"]["CPU_THRESHOLD"])
+RAM_THRESHOLD = float(config["DEFAULT"]["RAM_THRESHOLD"])
+DISK_THRESHOLD = float(config["DEFAULT"]["DISK_THRESHOLD"])
+NETWORK_THRESHOLD = float(config["DEFAULT"]["NETWORK_THRESHOLD"])
 
+EMAIL_ENABLED = config["DEFAULT"].get("EMAIL_ENABLED", "false").lower() == "true"
+ALERT_EMAIL = config["DEFAULT"].get("ALERT_EMAIL", "")
 
-# ---------------- LOG ERROR COUNT ----------------
-def count_errors(log_files):
-    count = 0
-    for file in log_files:
-        path = os.path.expanduser(file.strip())
-        if os.path.exists(path):
-            with open(path) as f:
-                for line in f:
-                    if "ERROR" in line:
-                        count += 1
-    return count
+# ---------------- STATE MANAGEMENT ----------------
 
+def load_state():
+    if not os.path.exists(STATE_FILE):
+        return {"CPU": "NORMAL", "RAM": "NORMAL", "DISK": "NORMAL", "NETWORK": "NORMAL"}
+    with open(STATE_FILE, "r") as f:
+        return json.load(f)
 
-# ---------------- CPU USAGE ----------------
-def check_cpu_usage():
+def save_state(state):
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f)
+
+# ---------------- EMAIL ----------------
+
+def send_email(subject, body):
+    if not EMAIL_ENABLED or not ALERT_EMAIL:
+        return
+
+    msg = EmailMessage()
+    msg["From"] = ALERT_EMAIL
+    msg["To"] = ALERT_EMAIL
+    msg["Subject"] = subject
+    msg.set_content(body)
+
     try:
-        output = subprocess.check_output(["ps", "-A", "-o", "%cpu"], text=True)
-        lines = output.strip().split("\n")[1:]
-        total_cpu = sum(float(x.strip()) for x in lines if x.strip())
-        return round(total_cpu, 1)
-    except Exception as e:
-        print(f"Failed to check CPU usage: {e}")
-        return None
-
-
-# ---------------- DISK USAGE ----------------
-def check_disk_usage():
-    try:
-        total, used, free = shutil.disk_usage("/")
-        percent_used = round((used / total) * 100, 1)
-        return percent_used
-    except Exception as e:
-        print(f"Failed to check disk usage: {e}")
-        return None
-
-
-# ---------------- RAM USAGE (FIXED) ----------------
-def check_ram_usage():
-    try:
-        vm = subprocess.check_output(["vm_stat"], text=True)
-        lines = vm.split("\n")
-
-        # Get page size from header line like:
-        # "Mach Virtual Memory Statistics: (page size of 16384 bytes)"
-        page_size = 4096  # fallback default
-        for line in lines:
-            if "page size of" in line:
-                page_size = int(line.split("page size of")[1].split("bytes")[0].strip())
-                break
-
-        pages = {}
-        for line in lines:
-            if ":" in line and "page size" not in line:
-                key, val = line.split(":")
-                val = val.strip().replace(".", "")
-                if val.isdigit():
-                    pages[key.strip()] = int(val)
-
-        free = pages.get("Pages free", 0) * page_size
-        active = pages.get("Pages active", 0) * page_size
-        inactive = pages.get("Pages inactive", 0) * page_size
-        wired = pages.get("Pages wired down", 0) * page_size
-
-        used = active + inactive + wired
-        total = used + free
-
-        percent = round((used / total) * 100, 1)
-        return percent
-
-    except Exception as e:
-        print(f"Failed to check RAM usage: {e}")
-        return None
-
-
-# ---------------- NETWORK USAGE ----------------
-def check_network_usage():
-    try:
-        net = subprocess.check_output(["netstat", "-ib"], text=True)
-        lines = net.split("\n")
-        total_bytes = 0
-        for line in lines[1:]:
-            parts = line.split()
-            if len(parts) > 9 and parts[0] == "en0":
-                ibytes = int(parts[6])
-                obytes = int(parts[9])
-                total_bytes += ibytes + obytes
-        return total_bytes
-    except Exception as e:
-        print(f"Failed to check network usage: {e}")
-        return None
-
-
-# ---------------- EMAIL ALERT ----------------
-def send_email(subject):
-    try:
-        msg = EmailMessage()
-        msg.set_content(subject)
-        msg["Subject"] = "🚨 System Alert"
-        msg["From"] = cfg["SMTP_USER"]
-        msg["To"] = cfg["ALERT_EMAIL"]
-
-        with smtplib.SMTP(cfg["SMTP_SERVER"], int(cfg["SMTP_PORT"])) as server:
-            server.starttls()
-            server.login(cfg["SMTP_USER"], cfg["SMTP_PASS"])
+        with smtplib.SMTP("localhost") as server:
             server.send_message(msg)
-
-        print("Alert email sent.")
     except Exception as e:
-        print(f"Failed to send email: {e}")
+        print(f"Email error: {e}")
 
+# ---------------- METRIC COLLECTION ----------------
 
-# ---------------- MAIN ----------------
-def main():
-    log_files = cfg["LOG_FILES"].split(",")
-    error_threshold = int(cfg["ERROR_THRESHOLD"])
-    cpu_threshold = int(cfg.get("CPU_THRESHOLD", 80))
-    disk_threshold = int(cfg.get("DISK_THRESHOLD", 90))
-    ram_threshold = int(cfg.get("RAM_THRESHOLD", 85))
-    net_threshold = int(cfg.get("NETWORK_THRESHOLD", 1000000000))
+cpu_usage = psutil.cpu_percent(interval=1) * psutil.cpu_count()
+ram_usage = psutil.virtual_memory().percent
+disk_usage = psutil.disk_usage("/").percent
+net_io = psutil.net_io_counters()
+network_usage = net_io.bytes_sent + net_io.bytes_recv
 
-    alerts_path = os.path.expanduser("~/log-project/" + cfg["ALERT_LOG"])
-    history_path = os.path.expanduser("~/log-project/" + cfg["HISTORY_LOG"])
-    health_path = os.path.expanduser("~/log-project/" + cfg["HEALTH_LOG"])
+timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    total_errors = count_errors(log_files)
+# Log metrics
+with open(HEALTH_LOG, "a") as f:
+    f.write(
+        f"{timestamp} | CPU_USAGE={cpu_usage}% | "
+        f"RAM_USAGE={ram_usage}% | "
+        f"DISK_USAGE={disk_usage}% | "
+        f"NETWORK_USAGE={network_usage} bytes\n"
+    )
 
-    with open(history_path, "a") as history_log:
-        history_log.write(f"{timestamp} | TOTAL_ERRORS={total_errors}\n")
+# ---------------- ALERT CHECKING ----------------
 
-    with open(health_path, "a") as health_log:
+state = load_state()
 
-        cpu_usage = check_cpu_usage()
-        if cpu_usage is not None:
-            print(f"CPU Usage: {cpu_usage}%")
-            health_log.write(f"{timestamp} | CPU_USAGE={cpu_usage}%\n")
-            if cpu_usage > cpu_threshold:
-                alert = f"⚠️ CPU USAGE HIGH ({cpu_usage}%)"
-                print(f"ALERT: {alert}")
-                send_email(alert)
+def check_metric(name, value, threshold):
+    global state
 
-        disk_usage = check_disk_usage()
-        if disk_usage is not None:
-            print(f"Disk Usage: {disk_usage}%")
-            health_log.write(f"{timestamp} | DISK_USAGE={disk_usage}%\n")
-            if disk_usage > disk_threshold:
-                alert = f"⚠️ DISK USAGE HIGH ({disk_usage}%)"
-                print(f"ALERT: {alert}")
-                send_email(alert)
+    if value >= threshold:
+        if state[name] != "ALERT":
+            state[name] = "ALERT"
+            send_email(
+                f"ALERT: {name} threshold exceeded",
+                f"{name} usage is {value} (threshold: {threshold})"
+            )
+            print(f"ALERT: {name} threshold exceeded ({value})")
+    else:
+        if state[name] == "ALERT":
+            state[name] = "NORMAL"
+            send_email(
+                f"RESOLVED: {name} back to normal",
+                f"{name} usage is now {value}"
+            )
+            print(f"RESOLVED: {name} back to normal ({value})")
 
-        ram_usage = check_ram_usage()
-        if ram_usage is not None:
-            print(f"RAM Usage: {ram_usage}%")
-            health_log.write(f"{timestamp} | RAM_USAGE={ram_usage}%\n")
-            if ram_usage > ram_threshold:
-                alert = f"⚠️ RAM USAGE HIGH ({ram_usage}%)"
-                print(f"ALERT: {alert}")
-                send_email(alert)
+check_metric("CPU", cpu_usage, CPU_THRESHOLD)
+check_metric("RAM", ram_usage, RAM_THRESHOLD)
+check_metric("DISK", disk_usage, DISK_THRESHOLD)
+check_metric("NETWORK", network_usage, NETWORK_THRESHOLD)
 
-        net_usage = check_network_usage()
-        if net_usage is not None:
-            health_log.write(f"{timestamp} | NETWORK_USAGE={net_usage} bytes\n")
-            if net_usage > net_threshold:
-                alert = f"⚠️ NETWORK USAGE HIGH ({net_usage} bytes)"
-                print(f"ALERT: {alert}")
-                send_email(alert)
-
-    if total_errors > error_threshold:
-        alert_line = f"{timestamp}: 🚨 ERROR THRESHOLD EXCEEDED (count={total_errors})\n"
-        print(f"ALERT: 🚨 ERROR THRESHOLD EXCEEDED (count={total_errors})")
-        with open(alerts_path, "a") as alert_log:
-            alert_log.write(alert_line)
-        send_email(alert_line)
-
-
-if __name__ == "__main__":
-    main()
+save_state(state)

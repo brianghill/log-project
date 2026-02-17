@@ -1,12 +1,19 @@
-# Logs and runtime output
-logs/*.log
-reports/*.log
-reports/*.json
-reports/*.txt
-
-# Python cache
+# Python
 __pycache__/
 *.pyc
 
-# Secrets
-config/config.conf
+# Logs
+*.log
+
+# Runtime / generated content
+alerts_state.json
+reports/live/
+reports/clients/
+reports/internal/*.SAMPLE_LOCAL
+reports/internal/daily_internal_snapshot.md
+
+# Personal docs
+brians_docs/
+
+# Mac
+.DS_Store
