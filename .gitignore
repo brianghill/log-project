@@ -9,8 +9,7 @@ __pycache__/
 alerts_state.json
 reports/live/
 reports/clients/
-reports/internal/*.SAMPLE_LOCAL
-reports/internal/daily_internal_snapshot.md
+reports/internal/
 
 # Local config
 config/config.conf
