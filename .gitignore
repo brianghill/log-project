@@ -10,6 +10,9 @@ alerts_state.json
 reports/live/
 reports/clients/
 reports/internal/
+reports/*.log
+reports/*.txt
+reports/.last_*
 
 # Local config
 config/config.conf
