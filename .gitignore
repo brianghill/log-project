@@ -7,6 +7,7 @@ __pycache__/
 
 # Runtime / generated content
 alerts_state.json
+logs/
 reports/live/
 reports/clients/
 reports/internal/
