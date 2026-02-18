@@ -1,4 +1,4 @@
-# AnchorPoint Monitoring v.1.0
+# AnchorPoint Monitoring
 
 ## Welcome
 
