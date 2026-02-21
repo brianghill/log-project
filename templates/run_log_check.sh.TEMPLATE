@@ -1,0 +1,71 @@
+#!/bin/bash
+
+BASE_DIR="$HOME/log-project"
+TODAY=$(date +%F)
+
+# -----------------------------
+# 1️⃣ Run system analyzer
+# -----------------------------
+python3 "$BASE_DIR/scripts/log_analyzer.py"
+
+# -----------------------------
+# 2️⃣ Generate ClientA report
+# -----------------------------
+CLIENT_REPORT="$BASE_DIR/reports/clients/ClientA/daily_report_$TODAY.md"
+python3 "$BASE_DIR/scripts/generate_daily_report.py" "$TODAY"
+
+# -----------------------------
+# 3️⃣ Email ClientA report
+# -----------------------------
+# Replace with your email and recipients
+EMAIL_FROM="bghill_98@yahoo.com"
+EMAIL_APP_PASSWORD="tapyjwtrnfplnafj"
+EMAIL_TO=("bghill_98@yahoo.com" "brothabri@gmail.com")
+EMAIL_SUBJECT="AnchorPoint Monitoring Daily Report & Summary - $TODAY"
+
+# -----------------------------
+# ⚠️ Safety checks
+# -----------------------------
+# Check if report exists
+if [ ! -f "$CLIENT_REPORT" ]; then
+    echo "Error: ClientA report not found at $CLIENT_REPORT"
+    exit 1
+fi
+
+# Marker file to prevent duplicate emails per day
+SENT_MARKER="$BASE_DIR/reports/clients/ClientA/.sent_$TODAY"
+if [ -f "$SENT_MARKER" ]; then
+    echo "Daily email already sent for $TODAY. Skipping..."
+    exit 0
+fi
+
+# Read report content
+REPORT_BODY=$(cat "$CLIENT_REPORT")
+EMAIL_TO_STRING=$(IFS=, ; echo "${EMAIL_TO[*]}")
+
+# -----------------------------
+# Send email
+# -----------------------------
+python3 - <<END
+import smtplib, ssl
+from email.message import EmailMessage
+
+msg = EmailMessage()
+msg.set_content("""$REPORT_BODY""")
+msg["Subject"] = "$EMAIL_SUBJECT"
+msg["From"] = "$EMAIL_FROM"
+msg["To"] = "$EMAIL_TO_STRING"
+
+context = ssl.create_default_context()
+
+with smtplib.SMTP_SSL("smtp.mail.yahoo.com", 465, context=context) as server:
+    server.login("$EMAIL_FROM", "$EMAIL_APP_PASSWORD")
+    server.send_message(msg)
+
+print("Email sent successfully.")
+END
+
+# -----------------------------
+# Create marker file to prevent duplicate sending
+# -----------------------------
+touch "$SENT_MARKER"

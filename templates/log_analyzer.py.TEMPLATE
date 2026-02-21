@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+
+import os
+import psutil
+import datetime
+
+# =====================================
+# CONFIGURATION
+# =====================================
+
+BASE_DIR = os.path.expanduser("~/log-project")
+LOG_DIR = os.path.join(BASE_DIR, "logs")
+MAX_LOG_SIZE = 10 * 1024 * 1024  # 10MB
+
+os.makedirs(LOG_DIR, exist_ok=True)
+
+# =====================================
+# DAILY LOG FILE NAME
+# =====================================
+
+today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+log_filename = f"health-{today_str}.log"
+log_path = os.path.join(LOG_DIR, log_filename)
+
+# =====================================
+# SIZE ROTATION (10MB safeguard)
+# =====================================
+
+if os.path.exists(log_path) and os.path.getsize(log_path) >= MAX_LOG_SIZE:
+    counter = 1
+    while True:
+        rotated_name = f"{log_filename}.{counter}"
+        rotated_path = os.path.join(LOG_DIR, rotated_name)
+        if not os.path.exists(rotated_path):
+            os.rename(log_path, rotated_path)
+            break
+        counter += 1
+
+# =====================================
+# COLLECT METRICS
+# =====================================
+
+timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+cpu_usage = round(psutil.cpu_percent(interval=1), 1)
+ram_usage = round(psutil.virtual_memory().percent, 1)
+disk_usage = round(psutil.disk_usage('/').percent, 1)
+
+net_io = psutil.net_io_counters()
+network_bytes = net_io.bytes_sent + net_io.bytes_recv
+network_gb = round(network_bytes / (1024**3), 2)
+
+# =====================================
+# DETERMINE STATUS LEVEL
+# =====================================
+
+level = "INFO"
+
+if cpu_usage > 85 or ram_usage > 85:
+    level = "WARN"
+
+if disk_usage > 90:
+    level = "ERROR"
+
+# =====================================
+# STRUCTURED & ALIGNED LOG ENTRY
+# =====================================
+
+log_entry = (
+    f"[{timestamp}] | "
+    f"{level:<5} | "
+    f"{'SYSTEM':<7} | "
+    f"CPU={cpu_usage:<5}% | "
+    f"RAM={ram_usage:<5}% | "
+    f"DISK={disk_usage:<5}% | "
+    f"NETWORK={network_gb}GB ({network_bytes} bytes)\n"
+)
+
+with open(log_path, "a") as f:
+    f.write(log_entry)

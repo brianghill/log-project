@@ -1,0 +1,149 @@
+📊 Weekly System Health & Trend Report
+
+
+Client / System: __________________________
+
+
+Reporting Period: ________________________
+
+
+Prepared By: Brian Hill
+
+
+Report Date: _____________________________
+
+⸻
+
+🟢 Overall System Status
+
+
+(Choose one: 🟢 Stable | 🟡 Watch | 🔴 Attention Needed)
+
+
+Status: ⬜⬜⬜
+
+One-line summary:
+
+Example: “System remained stable overall with elevated RAM usage during peak hours.”
+
+⸻
+
+1️⃣ Application & Log Stability Trend
+
+Data Source: Log analysis / error counts
+
+	•	Total ERROR events this week: ______
+
+	•	Change vs last week: ⬆️ ⬇️ ⬜ (percentage if known)
+
+	•	Notable patterns (time of day, repetition, clusters):
+
+Summary:
+
+Example: “Error frequency increased slightly compared to last week, primarily during afternoon usage.”
+
+⸻
+
+2️⃣ Resource Usage Trends
+
+
+CPU
+
+	•	Average usage: ______ %
+
+	•	Peak usage: ______ %
+
+	•	Trend vs last week: ⬆️ ⬇️ ⬜
+
+RAM
+	•	Average usage: ______ %
+
+	•	Peak usage: ______ %
+
+	•	Trend vs last week: ⬆️ ⬇️ ⬜
+
+Disk
+	•	Current usage: ______ %
+
+	•	Change this week: ______ %
+
+	•	Trend vs last week: ⬆️ ⬇️ ⬜
+
+Summary:
+
+Example: “RAM usage remained consistently high, while CPU and disk usage were stable.”
+
+⸻
+
+3️⃣ Capacity & Growth Trend
+	•	Disk growth rate: ______________________
+
+	•	Log growth rate: _______________________
+
+	•	Estimated capacity concern timeframe (if any): _______________________
+
+Summary:
+
+Example: “At the current growth rate, no immediate capacity concerns are expected.”
+
+⸻
+
+4️⃣ Alert Activity Trend
+	•	Total alerts this week: ______
+
+	•	Most frequent alert type: ______________________
+
+	•	Change vs last week: ⬆️ ⬇️ ⬜
+
+Summary:
+
+Example: “Alert frequency decreased compared to last week, indicating improved stability.”
+
+⸻
+
+5️⃣ Risk Watchlist
+
+(List only if applicable)
+	•	⬜ Resource nearing threshold: ______________________
+
+
+	•	⬜ Repeating error pattern: ______________________
+
+
+	•	⬜ Usage trend worth monitoring: ______________________
+
+⸻
+
+📌 Recommendations (Non-Actionable)
+
+(You advise, you do not fix.)
+
+Example:
+	•	Continue monitoring RAM usage trends
+
+	•	No immediate intervention required
+
+⸻
+
+✅ Final Assessment
+
+Example: “System health remains within acceptable limits. No critical issues detected during this reporting period.”
+
+⸻
+
+🧠 Important mindset note (read this once)
+
+This file is not:
+	•	A troubleshooting log
+
+	•	A repair checklist
+
+	•	A technical deep dive
+
+It is:
+	•	A translation layer between systems and humans
+
+	•	Proof of ongoing oversight
+
+	•	Your professional boundary in writing
+
