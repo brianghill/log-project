@@ -65,7 +65,7 @@ if disk_usage > 90:
 # =====================================
 # STRUCTURED & ALIGNED LOG ENTRY
 # =====================================
-
+            
 log_entry = (
     f"[{timestamp}] | "
     f"{level:<5} | "
@@ -78,3 +78,54 @@ log_entry = (
 
 with open(log_path, "a") as f:
     f.write(log_entry)
+
+#!/bin/bash
+
+# ==============================
+# SYSTEM INFORMATION COLLECTION
+# ==============================
+
+HOSTNAME=$(hostname)
+IP_ADDRESS=$(hostname -I | awk '{print $1}')
+OS_VERSION=$(grep PRETTY_NAME /etc/os-release | cut -d= -f2 | tr -d '"')
+DATE=$(date)
+LOAD=$(uptime | awk -F'load average:' '{print $2}')
+DISK_USAGE=$(df -h / | awk 'NR==2 {print $5}')
+MEMORY_USAGE=$(free -h | awk '/Mem:/ {print $3 " / " $2}')
+
+REPORT_DIR="$HOME/log-project"
+REPORT_FILE="$REPORT_DIR/summary.txt"
+
+mkdir -p $REPORT_DIR
+
+# ==============================
+# GENERATE STRUCTURED REPORT
+# ==============================
+
+echo "========================================" > $REPORT_FILE
+echo "System Monitoring Report" >> $REPORT_FILE
+echo "========================================" >> $REPORT_FILE
+echo "Hostname: $HOSTNAME" >> $REPORT_FILE
+echo "IP Address: $IP_ADDRESS" >> $REPORT_FILE
+echo "Operating System: $OS_VERSION" >> $REPORT_FILE
+echo "Report Generated: $DATE" >> $REPORT_FILE
+echo "========================================" >> $REPORT_FILE
+echo "" >> $REPORT_FILE
+
+echo "Service Health:" >> $REPORT_FILE
+systemctl --failed >> $REPORT_FILE
+echo "" >> $REPORT_FILE
+
+echo "Resource Status:" >> $REPORT_FILE
+echo "Load Average:$LOAD" >> $REPORT_FILE
+echo "Disk Usage (root): $DISK_USAGE" >> $REPORT_FILE
+echo "Memory Usage: $MEMORY_USAGE" >> $REPORT_FILE
+echo "" >> $REPORT_FILE
+
+echo "Security (Failed SSH Logins - Last 24h):" >> $REPORT_FILE
+grep "Failed password" /var/log/auth.log | tail -n 10 >> $REPORT_FILE
+echo "" >> $REPORT_FILE
+
+echo "Recent System Errors:" >> $REPORT_FILE
+grep -i "error" /var/log/syslog | tail -n 10 >> $REPORT_FILE
+echo "" >> $REPORT_FILE
