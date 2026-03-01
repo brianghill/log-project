@@ -149,10 +149,3 @@ echo "$SUMMARY_HTML"
 
 
 
-
-
-
-
-
-
-
