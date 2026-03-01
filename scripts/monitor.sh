@@ -1,149 +1,43 @@
 #!/bin/bash
 
-#############################################
-# Professional System Monitoring Script
-# Author: Brian Hill
-# Version: 2.0 (Executive Edition)
-#############################################
-
 HOSTNAME=$(hostname)
-TIMESTAMP=$(date +"%Y-%m-%d-%H%M%S")
-DATE_HUMAN=$(date +"%Y-%m-%d %H:%M:%S")
+DATE=$(date +"%Y-%m-%d-%H%M%S")
+OUTPUT_DIR="/home/brianhill/monitoring-reports/$HOSTNAME"
+OUTPUT_FILE="$OUTPUT_DIR/${HOSTNAME}-monitor-$DATE.log"
 
-BASE_DIR="/home/$USER/monitoring-reports/$HOSTNAME"
-HTML_DIR="$BASE_DIR/html"
+mkdir -p "$OUTPUT_DIR"
 
-mkdir -p "$BASE_DIR"
-mkdir -p "$HTML_DIR"
+{
+echo "=================================================="
+echo "AnchorPoint Monitoring - Raw System Report"
+echo "Host: $HOSTNAME"
+echo "Date: $DATE"
+echo "=================================================="
+echo ""
 
-LOG_FILE="$BASE_DIR/${HOSTNAME}-monitor-$TIMESTAMP.log"
-HTML_FILE="$HTML_DIR/${HOSTNAME}-monitor-$TIMESTAMP.html"
+# ----- STRUCTURED METRICS -----
 
-#############################################
-# Collect Metrics
-#############################################
+# CPU Load (1 minute average)
+CPU_LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d',' -f1 | xargs)
+echo "CPU Load: $CPU_LOAD"
 
-DISK_USAGE=$(df / | awk 'NR==2 {print $5}' | sed 's/%//')
-MEMORY_USAGE=$(free | awk '/Mem:/ {printf("%.0f"), $3/$2 * 100}')
-CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk '{print 100 - $8}' | awk '{printf("%.0f"), $1}')
-LOAD_AVG=$(uptime | awk -F'load average:' '{print $2}')
-NET_RX=$(cat /proc/net/dev | awk '/eth0/ {print int($2/1024/1024)}')
-NET_TX=$(cat /proc/net/dev | awk '/eth0/ {print int($10/1024/1024)}')
-FAILED_SSH=$(grep "Failed password" /var/log/auth.log 2>/dev/null | wc -l)
+# Memory Usage
+MEMORY_USAGE=$(free | awk '/Mem:/ { printf("%.0f"), $3/$2 * 100 }')
+echo "Memory Usage: $MEMORY_USAGE%"
 
-#############################################
-# Health Classification
-#############################################
+# Root Disk Usage
+DISK_USAGE=$(df / | awk 'NR==2 {print $5}' | tr -d '%')
+echo "Disk Usage: $DISK_USAGE%"
 
-health_check () {
-  VALUE=$1
-  if [ "$VALUE" -lt 60 ]; then
-    echo "GOOD"
-  elif [ "$VALUE" -lt 85 ]; then
-    echo "WARNING"
-  else
-    echo "CRITICAL"
-  fi
-}
+# SSH Service Status
+SSH_STATUS=$(systemctl is-active ssh 2>/dev/null || echo "unknown")
+echo "SSH Status: $SSH_STATUS"
 
-DISK_STATUS=$(health_check $DISK_USAGE)
-MEM_STATUS=$(health_check $MEMORY_USAGE)
-CPU_STATUS=$(health_check $CPU_USAGE)
+echo ""
+echo "----- Detailed Disk Table -----"
+df -h
 
-#############################################
-# Executive Narrative
-#############################################
-
-EXEC_SUMMARY="System operating within normal parameters."
-if [ "$DISK_STATUS" = "CRITICAL" ] || [ "$MEM_STATUS" = "CRITICAL" ] || [ "$CPU_STATUS" = "CRITICAL" ]; then
-  EXEC_SUMMARY="System health requires immediate attention."
-elif [ "$DISK_STATUS" = "WARNING" ] || [ "$MEM_STATUS" = "WARNING" ] || [ "$CPU_STATUS" = "WARNING" ]; then
-  EXEC_SUMMARY="System experiencing moderate resource utilization."
-fi
-
-#############################################
-# Generate Log File
-#############################################
-
-cat <<EOF > "$LOG_FILE"
-==================================================
-System Monitoring Report
-Host: $HOSTNAME
-Generated: $DATE_HUMAN
-==================================================
-
-EXECUTIVE SUMMARY:
-$EXEC_SUMMARY
-
-Resource Metrics:
-Disk Usage: $DISK_USAGE% ($DISK_STATUS)
-Memory Usage: $MEMORY_USAGE% ($MEM_STATUS)
-CPU Usage: $CPU_USAGE% ($CPU_STATUS)
-Load Average:$LOAD_AVG
-Network RX (MB): $NET_RX
-Network TX (MB): $NET_TX
-Failed SSH Attempts: $FAILED_SSH
-
-Service Status:
-$(systemctl is-active ssh 2>/dev/null)
-$(systemctl is-active cron 2>/dev/null)
-$(systemctl is-active apache2 2>/dev/null)
-$(systemctl is-active nginx 2>/dev/null)
-$(systemctl is-active mysql 2>/dev/null)
-$(systemctl is-active docker 2>/dev/null)
-
-==================================================
-End of Report
-==================================================
-EOF
-
-#############################################
-# Generate HTML Report
-#############################################
-
-cat <<EOF > "$HTML_FILE"
-<html>
-<head>
-<title>System Report - $HOSTNAME</title>
-<style>
-body { font-family: Arial; background-color: #f4f4f4; }
-.container { background: white; padding: 20px; margin: 40px auto; width: 800px; border-radius: 8px; }
-.good { color: green; }
-.warning { color: orange; }
-.critical { color: red; }
-</style>
-</head>
-<body>
-<div class="container">
-<h1>System Monitoring Report</h1>
-<p><strong>Host:</strong> $HOSTNAME</p>
-<p><strong>Generated:</strong> $DATE_HUMAN</p>
-
-<h2>Executive Summary</h2>
-<p>$EXEC_SUMMARY</p>
-
-<h2>Resource Metrics</h2>
-<ul>
-<li>Disk Usage: <span>$DISK_USAGE% ($DISK_STATUS)</span></li>
-<li>Memory Usage: <span>$MEMORY_USAGE% ($MEM_STATUS)</span></li>
-<li>CPU Usage: <span>$CPU_USAGE% ($CPU_STATUS)</span></li>
-<li>Load Average: $LOAD_AVG</li>
-<li>Network RX: $NET_RX MB</li>
-<li>Network TX: $NET_TX MB</li>
-<li>Failed SSH Attempts: $FAILED_SSH</li>
-</ul>
-
-</div>
-</body>
-</html>
-EOF
-
-#############################################
-# Completion Message
-#############################################
+} > "$OUTPUT_FILE"
 
 echo "Monitoring report saved to:"
-echo "$LOG_FILE"
-echo ""
-echo "Executive HTML report saved to:"
-echo "$HTML_FILE"
+echo "$OUTPUT_FILE"
