@@ -1,193 +1,106 @@
 #!/bin/bash
 
-PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-REPORT_DIR="$HOME/monitoring-reports/raspberrypi5"
-LOG_DIR="$PROJECT_DIR/logs"
-
-LATEST_LOG=$(ls -t "$LOG_DIR"/*.log 2>/dev/null | head -n 1)
-
-if [ -z "$LATEST_LOG" ]; then
-    echo "No log files found in $LOG_DIR"
-    exit 1
-fi
-
-# ===== HOST & DATE =====
-HOST=$(grep "Host:" "$LATEST_LOG" | awk -F': ' '{print $2}' | tr -d '[:space:]')
-HOST=${HOST:-RaspberryPi5}
+# ===== CONFIG =====
+REPORT_DIR="$HOME/monitoring-reports/ap-vm"
+CLIENT_NAME="ap-vm"
+LATEST_LOG=$(ls -t ~/log-project/logs/${CLIENT_NAME}-monitor-*.log 2>/dev/null | head -n1)
 DATE=$(date +"%Y-%m-%d-%H%M%S")
-
-CLIENT_NAME="RaspberryPi5"
 
 SUMMARY_LOG="$REPORT_DIR/${CLIENT_NAME}-Summary-$DATE.log"
 SUMMARY_HTML="$REPORT_DIR/${CLIENT_NAME}-Summary-$DATE.html"
 TREND_FILE="$REPORT_DIR/${CLIENT_NAME}-trend.log"
 
-# ===== Extract metrics safely =====
-CPU=$(grep "CPU Load:" "$LATEST_LOG" | awk -F': ' '{print $2}' | awk '{print $1}')
-CPU=${CPU:-0}
+# ===== RAW METRICS =====
 
-DISK=$(grep "Disk Usage:" "$LATEST_LOG" | awk -F': ' '{print $2}' | tr -d '%' )
-DISK=${DISK:-0}
+# CPU Load (1 min average)
+CPU_LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d',' -f1 | xargs)
+CPU_LOAD=${CPU_LOAD:-0}
 
-MEM=$(grep "Memory Usage:" "$LATEST_LOG" | awk -F': ' '{print $2}' | tr -d '%' )
-MEM=${MEM:-0}
+# CPU Usage %
+if command -v mpstat >/dev/null 2>&1; then
+    CPU_USAGE=$(mpstat 1 1 | awk '/Average/ {usage=100-$12} END {printf "%.1f", usage}')
+elif command -v top >/dev/null 2>&1; then
+    CPU_USAGE=$(top -bn1 | awk '/Cpu\(s\)/ {print 100 - $8}')
+    CPU_USAGE=$(printf "%.1f" $CPU_USAGE)
+else
+    CPU_USAGE=0
+fi
 
-SSH=$(grep "SSH Status:" "$LATEST_LOG" | awk -F': ' '{print $2}' )
-SSH=${SSH:-inactive}
-
-# ===== TEMP with fallback =====
-TEMP_RAW=$(vcgencmd measure_temp 2>/dev/null | cut -d= -f2 | tr -d "'C")
-if [[ $TEMP_RAW =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
-    TEMP=$TEMP_RAW
+# CPU Temperature
+if command -v vcgencmd >/dev/null 2>&1; then
+    TEMP=$(vcgencmd measure_temp 2>/dev/null | grep -o '[0-9]*\.[0-9]*')
 else
     TEMP=0
-    echo "WARNING: Could not read CPU temperature, using 0°C" >> "$LOG_DIR/temp_errors.log"
 fi
+TEMP=${TEMP:-0}
 
-UPTIME=$(uptime -p)
+# Memory Usage %
+MEMORY_USAGE=$(free | awk '/Mem:/ { printf "%.0f", $3/$2*100 }')
+MEMORY_USAGE=${MEMORY_USAGE:-0}
 
-# ===== Debug lines (commented) =====
-# echo "DEBUG: CPU='$CPU'"
-# echo "DEBUG: MEM='$MEM'"
-# echo "DEBUG: DISK='$DISK'"
-# echo "DEBUG: SSH='$SSH'"
-# echo "DEBUG: TEMP='$TEMP'"
+# Disk Usage %
+DISK_USAGE=$(df / | awk 'NR==2 {print $5}' | tr -d '%')
+DISK_USAGE=${DISK_USAGE:-0}
 
-# ===== Risk Calculations =====
-risk_cpu() {
-    if (( $(echo "$CPU > 3.5" | bc -l) )); then echo "CRITICAL"
-    elif (( $(echo "$CPU > 2.0" | bc -l) )); then echo "HIGH"
-    elif (( $(echo "$CPU > 1.0" | bc -l) )); then echo "MEDIUM"
-    else echo "LOW"; fi
-}
+# Network Usage
+INTERFACE=$(ip route | grep default | awk '{print $5}' | head -n1)
+RX_BYTES=$(cat /sys/class/net/${INTERFACE}/statistics/rx_bytes 2>/dev/null || echo 0)
+TX_BYTES=$(cat /sys/class/net/${INTERFACE}/statistics/tx_bytes 2>/dev/null || echo 0)
 
-risk_percent() {
-    local value=${1:-0}
-    if [ "$value" -gt 95 ]; then echo "CRITICAL"
-    elif [ "$value" -gt 85 ]; then echo "HIGH"
-    elif [ "$value" -gt 70 ]; then echo "MEDIUM"
-    else echo "LOW"; fi
-}
+RX_MB=$((RX_BYTES / 1024 / 1024))
+TX_MB=$((TX_BYTES / 1024 / 1024))
 
-risk_temp() {
-    if (( $(echo "$TEMP > 85" | bc -l) )); then echo "CRITICAL"
-    elif (( $(echo "$TEMP > 75" | bc -l) )); then echo "HIGH"
-    elif (( $(echo "$TEMP > 65" | bc -l) )); then echo "MEDIUM"
-    else echo "LOW"; fi
-}
+# Network rate (MB/s)
+sleep 1
+RX_BYTES2=$(cat /sys/class/net/${INTERFACE}/statistics/rx_bytes 2>/dev/null || echo 0)
+TX_BYTES2=$(cat /sys/class/net/${INTERFACE}/statistics/tx_bytes 2>/dev/null || echo 0)
 
-CPU_RISK=$(risk_cpu)
-DISK_RISK=$(risk_percent "$DISK")
-MEM_RISK=$(risk_percent "$MEM")
-TEMP_RISK=$(risk_temp)
+RX_RATE=$(echo "scale=2; ($RX_BYTES2 - $RX_BYTES)/1024/1024" | bc)
+TX_RATE=$(echo "scale=2; ($TX_BYTES2 - $TX_BYTES)/1024/1024" | bc)
 
-if [ "$SSH" != "active" ]; then
-    SSH_RISK="HIGH"
+# SSH Status
+if systemctl is-active ssh >/dev/null 2>&1; then
+    SSH_STATUS="active"
 else
-    SSH_RISK="LOW"
+    SSH_STATUS="inactive"
 fi
 
-# ===== Overall Risk =====
-CRITICAL=0
-HIGH=0
-MEDIUM=0
+# Uptime
+UPTIME_INFO=$(uptime -p)
 
-for R in $CPU_RISK $DISK_RISK $MEM_RISK $TEMP_RISK $SSH_RISK; do
-    [ "$R" = "CRITICAL" ] && ((CRITICAL++))
-    [ "$R" = "HIGH" ] && ((HIGH++))
-    [ "$R" = "MEDIUM" ] && ((MEDIUM++))
-done
-
-if [ "$CRITICAL" -gt 0 ]; then
-    OVERALL="CRITICAL"
-elif [ "$HIGH" -ge 1 ]; then
-    OVERALL="HIGH"
-elif [ "$MEDIUM" -ge 1 ]; then
-    OVERALL="MEDIUM"
-else
-    OVERALL="LOW"
+# ===== RISK LEVEL CALCULATION =====
+OVERALL_RISK="LOW"
+if [ "$CPU_USAGE" != "0" ] && (( $(echo "$CPU_USAGE > 85" | bc -l) )); then
+    OVERALL_RISK="HIGH"
+elif [ "$DISK_USAGE" -ge 90 ] || [ "$MEMORY_USAGE" -ge 90 ]; then
+    OVERALL_RISK="HIGH"
+elif [ "$SSH_STATUS" == "inactive" ]; then
+    OVERALL_RISK="HIGH"
 fi
 
-colorize() {
-    case $1 in
-        CRITICAL) echo "red" ;;
-        HIGH) echo "orange" ;;
-        MEDIUM) echo "gold" ;;
-        LOW) echo "green" ;;
-    esac
-}
-
-OVERALL_COLOR=$(colorize $OVERALL)
-
-# ===== Save Text Summary =====
+# ===== WRITE SUMMARY LOG =====
 {
 echo "AnchorPoint Monitoring"
 echo "System Health Summary"
-echo "Host: $HOST"
+echo "Host: $CLIENT_NAME"
 echo "Date: $DATE"
 echo "----------------------------------"
-echo "CPU Load: $CPU ($CPU_RISK)"
-echo "Disk Usage: $DISK% ($DISK_RISK)"
-echo "Memory Usage: $MEM% ($MEM_RISK)"
-echo "Temperature: ${TEMP}°C ($TEMP_RISK)"
-echo "Uptime: $UPTIME"
-echo "SSH Status: $SSH ($SSH_RISK)"
+echo "CPU Load: $CPU_LOAD (LOW)"
+echo "CPU Usage: $CPU_USAGE% (LOW)"
+echo "Disk Usage: $DISK_USAGE% (LOW)"
+echo "Memory Usage: $MEMORY_USAGE% (LOW)"
+echo "Temperature: ${TEMP}°C (LOW)"
+echo "Uptime: $UPTIME_INFO"
+echo "Network RX: $RX_MB MB"
+echo "Network TX: $TX_MB MB"
+echo "RX Rate: $RX_RATE MB/s"
+echo "TX Rate: $TX_RATE MB/s"
+echo "SSH Status: $SSH_STATUS (LOW)"
 echo "----------------------------------"
-echo "Overall Risk Level: $OVERALL"
+echo "Overall Risk Level: $OVERALL_RISK"
 echo ""
-echo "Executive Summary: All monitored systems are currently operating at risk level: $OVERALL."
+echo "Executive Summary: All monitored systems are currently operating at risk level: $OVERALL_RISK."
 echo "Recommendations: Check any metrics flagged as HIGH or CRITICAL."
 } > "$SUMMARY_LOG"
 
-# ===== Save HTML Summary =====
-cat > "$SUMMARY_HTML" <<EOF
-<!DOCTYPE html>
-<html>
-<head>
-<title>AnchorPoint Monitoring - $HOST</title>
-<style>
-body { font-family: Arial; }
-.low { color: green; }
-.medium { color: gold; }
-.high { color: orange; }
-.critical { color: red; font-weight: bold; }
-</style>
-</head>
-<body>
-<h1>AnchorPoint Monitoring</h1>
-<h2>System Health Report</h2>
-<p><strong>Host:</strong> $HOST</p>
-<p><strong>Date:</strong> $DATE</p>
-<hr>
-<h3>System Metrics</h3>
-<p>CPU Load: $CPU (<span class="$(echo $CPU_RISK | tr '[:upper:]' '[:lower:]')">$CPU_RISK</span>)</p>
-<p>Disk Usage: $DISK% (<span class="$(echo $DISK_RISK | tr '[:upper:]' '[:lower:]')">$DISK_RISK</span>)</p>
-<p>Memory Usage: $MEM% (<span class="$(echo $MEM_RISK | tr '[:upper:]' '[:lower:]')">$MEM_RISK</span>)</p>
-<p>Temperature: ${TEMP}°C (<span class="$(echo $TEMP_RISK | tr '[:upper:]' '[:lower:]')">$TEMP_RISK</span>)</p>
-<p>Uptime: $UPTIME</p>
-<p>SSH Status: $SSH (<span class="$(echo $SSH_RISK | tr '[:upper:]' '[:lower:]')">$SSH_RISK</span>)</p>
-<hr>
-<h3>Executive Summary</h3>
-<p>All monitored systems are currently operating at risk level: <strong>$OVERALL</strong>.</p>
-<h3>Recommendations</h3>
-<p>Check any metrics flagged as HIGH or CRITICAL.</p>
-<hr>
-<h2 class="$(echo $OVERALL | tr '[:upper:]' '[:lower:]')">
-Overall Risk Level: $OVERALL
-</h2>
-</body>
-</html>
-EOF
-
-# ===== Trend file =====
-echo "$DATE,$CPU,$DISK,$MEM,$TEMP,$OVERALL" >> "$TREND_FILE"
-tail -n 14 "$TREND_FILE" > "$TREND_FILE.tmp" && mv "$TREND_FILE.tmp" "$TREND_FILE"
-
-# ===== Alerts =====
-if [[ "$OVERALL" == "HIGH" || "$OVERALL" == "CRITICAL" ]]; then
-    echo "Alert: $HOST risk level is $OVERALL at $DATE" | mail -s "Monitoring Alert - $HOST" your@email.com
-fi
-
-echo "Summary report saved to:"
-echo "$SUMMARY_LOG"
-echo "$SUMMARY_HTML"
+echo "Summary log created: $SUMMARY_LOG"

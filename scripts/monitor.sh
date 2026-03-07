@@ -1,8 +1,8 @@
 #!/bin/bash
 
-HOSTNAME="RaspberryPi5"
+HOSTNAME="ap-vm"
 DATE=$(date +"%Y-%m-%d-%H%M%S")
-OUTPUT_DIR="/home/client2/log-project/logs"
+OUTPUT_DIR="/home/brianhill/log-project/logs"
 OUTPUT_FILE="$OUTPUT_DIR/${HOSTNAME}-monitor-$DATE.log"
 
 mkdir -p "$OUTPUT_DIR"
@@ -19,7 +19,12 @@ echo ""
 
 # CPU Load (1 minute average)
 CPU_LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d',' -f1 | xargs)
+
+CPU_USAGE=$(grep 'cpu ' /proc/stat | awk '{usage=($2+$4)*100/($2+$4+$5)} END {print usage}')
+CPU_USAGE=$(printf "%.1f" $CPU_USAGE)
+
 echo "CPU Load: $CPU_LOAD"
+echo "CPU Usage: $CPU_USAGE%"
 
 # CPU Temperature
 if command -v vcgencmd >/dev/null 2>&1; then
@@ -48,8 +53,18 @@ TX_BYTES=$(cat /sys/class/net/$INTERFACE/statistics/tx_bytes)
 RX_MB=$((RX_BYTES / 1024 / 1024))
 TX_MB=$((TX_BYTES / 1024 / 1024))
 
+sleep 1
+
+RX_BYTES2=$(cat /sys/class/net/$INTERFACE/statistics/rx_bytes)
+TX_BYTES2=$(cat /sys/class/net/$INTERFACE/statistics/tx_bytes)
+
+RX_RATE=$(echo "scale=2; ($RX_BYTES2 - $RX_BYTES) / 1024 / 1024" | bc)
+TX_RATE=$(echo "scale=2; ($TX_BYTES2 - $TX_BYTES) / 1024 / 1024" | bc)
+
 echo "Network RX: $RX_MB MB"
 echo "Network TX: $TX_MB MB"
+echo "RX Rate: $RX_RATE MB/s"
+echo "TX Rate: $TX_RATE MB/s"
 
 # SSH Service Status
 SSH_STATUS=$(systemctl is-active ssh 2>/dev/null || echo "unknown")
