@@ -21,7 +21,7 @@ required for clients.
 5.  Edit config/config.conf and update it with your local paths and
     credentials.
 6.  Install dependencies: pip install -r requirements.txt
-7.  Run a report: python3 scripts/generate_daily_report.py
+7.  Run a report: ~/log-project/scripts/monitor.sh
 
 Generated reports will appear inside the reports/ directory.
 

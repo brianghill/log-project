@@ -15,6 +15,6 @@ Monitor application logs, system metrics (CPU, RAM, Disk, Network), and receive 
 This system helps quickly pinpoint recurring application issues, optimize system health, and reduce downtime — perfect for freelance IT monitoring setups or small businesses without a dedicated ops team.
 
 ## Get Started
-Clone the repo and follow the setup instructions in `docs/README.md`.
+Clone the repo and follow the setup instructions in `log-project/README.md`.
 
 ---

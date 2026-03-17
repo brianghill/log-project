@@ -1,8 +1,12 @@
 #!/bin/bash
 
-HOSTNAME="ap-vm"
+# ===== HOST + DATE =====
+HOSTNAME=$(hostname)
 DATE=$(date +"%Y-%m-%d-%H%M%S")
-OUTPUT_DIR="/home/brianhill/log-project/logs"
+
+# ===== DIRECTORIES =====
+BASE_DIR="$HOME/log-project"
+OUTPUT_DIR="$BASE_DIR/logs"
 OUTPUT_FILE="$OUTPUT_DIR/${HOSTNAME}-monitor-$DATE.log"
 
 mkdir -p "$OUTPUT_DIR"

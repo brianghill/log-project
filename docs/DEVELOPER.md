@@ -32,10 +32,10 @@ The system is file-based and script-driven.
 Core components:
 
 - scripts/
-  - generate_daily_report.py
-  - generate_weekly_report.py
   - log_analyzer.py
-  - run_log_check.sh
+  - monitor.sh
+  - summary.sh
+  - run-monitoring.sh
 
 - config/
   - config.example.conf (template)
@@ -119,7 +119,7 @@ Future improvements:
 # 7. Deployment Model
 
 Developer Environment:
-- Local macOS development
+- "Dev_VM" development
 - Git version control
 - GitHub remote
 

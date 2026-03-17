@@ -1,14 +1,36 @@
 #!/bin/bash
 
-# ===== CONFIG =====
-REPORT_DIR="$HOME/monitoring-reports/ap-vm"
-CLIENT_NAME="ap-vm"
-LATEST_LOG=$(ls -t ~/log-project/logs/${CLIENT_NAME}-monitor-*.log 2>/dev/null | head -n1)
+#!/bin/bash
+
+# ===== LOAD CONFIG =====
+CONFIG_FILE="$HOME/log-project/config/config.conf"
+
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "❌ Config file not found: $CONFIG_FILE"
+    exit 1
+fi
+
+source "$CONFIG_FILE"
+
+# ===== HOST + DATE =====
+HOSTNAME=$(hostname)
 DATE=$(date +"%Y-%m-%d-%H%M%S")
 
-SUMMARY_LOG="$REPORT_DIR/${CLIENT_NAME}-Summary-$DATE.log"
-SUMMARY_HTML="$REPORT_DIR/${CLIENT_NAME}-Summary-$DATE.html"
-TREND_FILE="$REPORT_DIR/${CLIENT_NAME}-trend.log"
+# ===== REPORT DIRECTORY =====
+REPORT_DIR="$BASE_REPORT_DIR/$HOSTNAME"
+mkdir -p "$REPORT_DIR"
+
+# ===== LOG FILES =====
+LATEST_LOG=$(ls -t "$HOME/log-project/logs/${HOSTNAME}-monitor-"*.log 2>/dev/null | head -n1)
+
+# ===== OUTPUT FILE PATHS =====
+ALERT_LOG="$REPORT_DIR/$ALERT_LOG"
+HISTORY_LOG="$REPORT_DIR/$HISTORY_LOG"
+DASHBOARD_LOG="$REPORT_DIR/$DASHBOARD_LOG"
+
+SUMMARY_LOG="$REPORT_DIR/${HOSTNAME}-Summary-$DATE.log"
+SUMMARY_HTML="$REPORT_DIR/${HOSTNAME}-Summary-$DATE.html"
+TREND_FILE="$REPORT_DIR/${HOSTNAME}-trend.log"
 
 # ===== RAW METRICS =====
 
@@ -82,7 +104,7 @@ fi
 {
 echo "AnchorPoint Monitoring"
 echo "System Health Summary"
-echo "Host: $CLIENT_NAME"
+echo "Host: $HOSTNAME"
 echo "Date: $DATE"
 echo "----------------------------------"
 echo "CPU Load: $CPU_LOAD (LOW)"
