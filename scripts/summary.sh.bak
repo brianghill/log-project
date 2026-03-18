@@ -126,3 +126,11 @@ echo "Recommendations: Check any metrics flagged as HIGH or CRITICAL."
 } > "$SUMMARY_LOG"
 
 echo "Summary log created: $SUMMARY_LOG"
+
+CENTRAL_SERVER="brianhill@dev-logproject"
+CENTRAL_DIR="~/central-monitoring/$HOSTNAME"
+
+scp "$SUMMARY_LOG" "$CENTRAL_SERVER:$CENTRAL_DIR/"
+scp "$ALERT_LOG" "$CENTRAL_SERVER:$CENTRAL_DIR/"
+scp "$HISTORY_LOG" "$CENTRAL_SERVER:$CENTRAL_DIR/"
+scp "$DASHBOARD_LOG" "$CENTRAL_SERVER:$CENTRAL_DIR/"
