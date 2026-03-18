@@ -39,14 +39,31 @@ TREND_FILE="$REPORT_DIR/${HOSTNAME}-trend.log"
 CPU_LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d',' -f1 | xargs)
 CPU_LOAD=${CPU_LOAD:-0}
 
-# CPU Usage %
-if command -v mpstat >/dev/null 2>&1; then
-    CPU_USAGE=$(mpstat 1 1 | awk '/Average/ {usage=100-$12} END {printf "%.1f", usage}')
-elif command -v top >/dev/null 2>&1; then
-    CPU_USAGE=$(top -bn1 | awk '/Cpu\(s\)/ {print 100 - $8}')
-    CPU_USAGE=$(printf "%.1f" $CPU_USAGE)
+# ===== CPU USAGE (accurate calculation) =====
+
+read cpu user nice system idle iowait irq softirq steal guest < /proc/stat
+total1=$((user + nice + system + idle + iowait + irq + softirq + steal))
+idle1=$idle
+
+sleep 1
+
+read cpu user nice system idle iowait irq softirq steal guest < /proc/stat
+total2=$((user + nice + system + idle + iowait + irq + softirq + steal))
+idle2=$idle
+
+total_diff=$((total2 - total1))
+idle_diff=$((idle2 - idle1))
+
+CPU_USAGE=$(( (100 * (total_diff - idle_diff)) / total_diff ))
+
+# ===== CPU STATUS =====
+
+if [ "$CPU_USAGE" -ge "$CPU_THRESHOLD" ]; then
+    CPU_STATUS="HIGH"
+elif [ "$CPU_USAGE" -ge 50 ]; then
+    CPU_STATUS="MEDIUM"
 else
-    CPU_USAGE=0
+    CPU_STATUS="LOW"
 fi
 
 # CPU Temperature
@@ -92,13 +109,22 @@ fi
 UPTIME_INFO=$(uptime -p)
 
 # ===== RISK LEVEL CALCULATION =====
-OVERALL_RISK="LOW"
+    OVERALL_RISK="LOW"
 if [ "$CPU_USAGE" != "0" ] && (( $(echo "$CPU_USAGE > 85" | bc -l) )); then
     OVERALL_RISK="HIGH"
 elif [ "$DISK_USAGE" -ge 90 ] || [ "$MEMORY_USAGE" -ge 90 ]; then
     OVERALL_RISK="HIGH"
 elif [ "$SSH_STATUS" == "inactive" ]; then
     OVERALL_RISK="HIGH"
+fi
+
+# ===== ALERT LOGGING =====
+
+if [ "$OVERALL_RISK" == "HIGH" ]; then
+    echo "$DATE - $HOSTNAME - HIGH risk detected (CPU: $CPU_USAGE%, Disk: $DISK_USAGE%, Mem: $MEMORY_USAGE%, SSH: $SSH_STATUS)" >> "$ALERT_LOG"
+
+    echo "ALERT: $HOSTNAME is in HIGH state (CPU: $CPU_USAGE%, Disk: $DISK_USAGE%, Mem: $MEMORY_USAGE%)" \
+    | mail -s "🚨 AnchorPoint Alert - $HOSTNAME" "$ALERT_EMAIL"
 fi
 
 # ===== WRITE SUMMARY LOG =====
@@ -109,9 +135,9 @@ echo "Host: $HOSTNAME"
 echo "Date: $DATE"
 echo "----------------------------------"
 echo "CPU Load: $CPU_LOAD (LOW)"
-echo "CPU Usage: $CPU_USAGE% (LOW)"
-echo "Disk Usage: $DISK_USAGE% (LOW)"
-echo "Memory Usage: $MEMORY_USAGE% (LOW)"
+echo "CPU Usage: $CPU_USAGE% ($CPU_STATUS)"
+echo "Disk Usage: $DISK_USAGE% ($DISK_STATUS)"
+echo "Memory Usage: $MEMORY_USAGE% ($MEM_STATUS)"
 echo "Temperature: ${TEMP}°C (LOW)"
 echo "Uptime: $UPTIME_INFO"
 echo "Network RX: $RX_MB MB"

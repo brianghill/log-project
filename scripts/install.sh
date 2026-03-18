@@ -1,78 +1,116 @@
 #!/bin/bash
 
 #############################################
-# AnchorPoint Monitoring - Installer Script
-# Purpose: One-time setup for monitoring system
+# AnchorPoint Monitoring - Installer v2
 #############################################
 
-echo "Starting AnchorPoint Monitoring installation..."
+echo "🚀 Starting AnchorPoint Monitoring installation..."
 
-# Base directory (assumes script is inside log-project/scripts)
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-TEMPLATE_DIR="$BASE_DIR/templates"
+CONFIG_DIR="$BASE_DIR/config"
+CONFIG_FILE="$CONFIG_DIR/config.conf"
+TEMPLATE_FILE="$CONFIG_DIR/config.template.conf"
+
 REPORT_DIR="$HOME/monitoring-reports"
+CENTRAL_DIR="$HOME/central-monitoring"
 LOG_DIR="$BASE_DIR/logs"
 
 #############################################
-# Step 1 - Verify Directory Structure
+# Step 1 - Directories
 #############################################
 
-echo "Verifying directory structure..."
+echo "📁 Creating directories..."
 
 mkdir -p "$REPORT_DIR"
+mkdir -p "$CENTRAL_DIR"
 mkdir -p "$LOG_DIR"
 
-if [ ! -d "$TEMPLATE_DIR" ]; then
-    echo "❌ Templates directory not found at $TEMPLATE_DIR"
-    exit 1
+echo "✅ Directories ready."
+
+#############################################
+# Step 2 - Config Setup
+#############################################
+
+echo "⚙️ Setting up configuration..."
+
+if [ ! -f "$CONFIG_FILE" ]; then
+    if [ -f "$TEMPLATE_FILE" ]; then
+        cp "$TEMPLATE_FILE" "$CONFIG_FILE"
+        echo "✅ Config created from template."
+    else
+        echo "❌ Template config not found!"
+        exit 1
+    fi
+else
+    echo "ℹ️ Config already exists. Skipping."
 fi
 
-echo "Directory structure verified."
-
 #############################################
-# Step 2 - Verify Template Files Exist
+# Step 3 - Required Commands
 #############################################
 
-echo "Checking for template files..."
+echo "🔍 Checking required commands..."
 
-if [ -z "$(ls "$TEMPLATE_DIR"/*-template* 2>/dev/null)" ]; then
-    echo "❌ No template files found in $TEMPLATE_DIR"
-    echo "Installation cannot proceed without templates."
-    exit 1
-fi
-
-echo "Template files verified."
-
-#############################################
-# Step 3 - Verify Required Commands
-#############################################
-
-echo "Checking required system commands..."
-
-REQUIRED_CMDS=("df" "free" "uptime" "grep" "awk")
+REQUIRED_CMDS=("df" "free" "uptime" "grep" "awk" "scp" "ssh")
 
 for cmd in "${REQUIRED_CMDS[@]}"; do
     if ! command -v "$cmd" &> /dev/null; then
-        echo "❌ Required command not found: $cmd"
+        echo "❌ Missing command: $cmd"
         exit 1
     fi
 done
 
-echo "All required system commands found."
+echo "✅ All required commands available."
 
 #############################################
 # Step 4 - Permissions
 #############################################
 
-echo "Setting execute permissions..."
+echo "🔐 Setting script permissions..."
 
 chmod +x "$BASE_DIR/scripts/"*.sh 2>/dev/null
 
-echo "Permissions set."
+echo "✅ Permissions set."
 
 #############################################
-# Installation Complete
+# Step 5 - Cron Setup (auto monitoring)
 #############################################
 
-echo "✅ AnchorPoint Monitoring installation complete."
-echo "You may now run monitor.sh"
+echo "⏱ Setting up automated monitoring..."
+
+CRON_JOB="*/5 * * * * $BASE_DIR/scripts/run-monitoring.sh"
+
+(crontab -l 2>/dev/null | grep -v "run-monitoring.sh"; echo "$CRON_JOB") | crontab -
+
+echo "✅ Monitoring scheduled every 5 minutes."
+
+#############################################
+# Step 6 - Email Capability Check
+#############################################
+
+echo "📧 Checking mail capability..."
+
+if command -v mail &> /dev/null; then
+    echo "✅ Mail command found."
+else
+    echo "⚠️ Mail not installed. Run: sudo apt install mailutils msmtp msmtp-mta"
+fi
+
+#############################################
+# Step 7 - Final Output
+#############################################
+
+echo ""
+echo "🎉 INSTALLATION COMPLETE"
+echo "--------------------------------------"
+echo "Reports: $REPORT_DIR"
+echo "Central: $CENTRAL_DIR"
+echo "Config:  $CONFIG_FILE"
+echo ""
+echo "👉 Next Steps:"
+echo "1. Edit config: nano $CONFIG_FILE"
+echo "2. Test run: $BASE_DIR/scripts/run-monitoring.sh"
+echo "3. View dashboard:"
+echo "   watch -n 5 $BASE_DIR/scripts/central-dashboard.sh"
+echo ""
+echo "🔥 AnchorPoint Monitoring is LIVE."

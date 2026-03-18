@@ -1,7 +1,5 @@
 #!/bin/bash
 
-#!/bin/bash
-
 # ===== LOAD CONFIG =====
 CONFIG_FILE="$HOME/log-project/config/config.conf"
 
@@ -11,6 +9,9 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 source "$CONFIG_FILE"
+
+# ===== CENTRAL SERVER CONFIG =====
+CENTRAL_SERVER="brianhill@dev-logproject"
 
 # ===== HOST + DATE =====
 HOSTNAME=$(hostname)
@@ -127,10 +128,17 @@ echo "Recommendations: Check any metrics flagged as HIGH or CRITICAL."
 
 echo "Summary log created: $SUMMARY_LOG"
 
-CENTRAL_SERVER="brianhill@dev-logproject"
-CENTRAL_DIR="~/central-monitoring/$HOSTNAME"
+# ===== CENTRAL SYNC =====
 
-scp "$SUMMARY_LOG" "$CENTRAL_SERVER:$CENTRAL_DIR/"
-scp "$ALERT_LOG" "$CENTRAL_SERVER:$CENTRAL_DIR/"
-scp "$HISTORY_LOG" "$CENTRAL_SERVER:$CENTRAL_DIR/"
-scp "$DASHBOARD_LOG" "$CENTRAL_SERVER:$CENTRAL_DIR/"
+CENTRAL_SERVER="brianhill@dev-logproject"
+
+# Create directory on central server
+ssh "$CENTRAL_SERVER" "mkdir -p ~/central-monitoring/$HOSTNAME"
+
+# Copy summary log
+scp "$SUMMARY_LOG" "$CENTRAL_SERVER:~/central-monitoring/$HOSTNAME/"
+
+# Copy optional logs if they exist
+[ -f "$ALERT_LOG" ] && scp "$ALERT_LOG" "$CENTRAL_SERVER:~/central-monitoring/$HOSTNAME/"
+[ -f "$HISTORY_LOG" ] && scp "$HISTORY_LOG" "$CENTRAL_SERVER:~/central-monitoring/$HOSTNAME/"
+[ -f "$DASHBOARD_LOG" ] && scp "$DASHBOARD_LOG" "$CENTRAL_SERVER:~/central-monitoring/$HOSTNAME/"
