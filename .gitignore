@@ -4,7 +4,8 @@ __pycache__/
 
 # Logs
 *.log
-*.BACKUP
+*.bak
+runtime/
 
 # Runtime / generated content
 alerts_state.json
