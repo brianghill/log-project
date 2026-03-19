@@ -1,4 +1,4 @@
-k#!/bin/bash
+#!/bin/bash
 
 #############################################
 # AnchorPoint Monitoring - Bootstrap Installer
