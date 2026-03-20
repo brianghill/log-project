@@ -3,7 +3,7 @@
 # AnchorPoint Monitoring Runner
 # Runs monitor.sh then summary.sh
 
-PROJECT_DIR="/home/brianhill/log-project"
+PROJECT_DIR="$HOME/log-project"
 SCRIPT_DIR="$PROJECT_DIR/scripts"
 
 # Run monitoring collection
@@ -13,7 +13,7 @@ $SCRIPT_DIR/monitor.sh
 sleep 2
 
 # Generate summary
-scp "$SRC"/* b*******l@IP_ADDR:~/central-monitoring/$HOSTNAME/
+scp "$SRC"/* brianhill@100.125.19.28:~/central-monitoring/$HOSTNAME/
 
 
 HOSTNAME=$(hostname)
