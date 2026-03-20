@@ -14,3 +14,11 @@ sleep 2
 
 # Generate summary
 scp "$SRC"/* b*******l@IP_ADDR:~/central-monitoring/$HOSTNAME/
+
+
+HOSTNAME=$(hostname)
+SRC="$HOME/monitoring-reports/$HOSTNAME"
+DEST="$HOME/central-monitoring/$HOSTNAME"
+
+mkdir -p "$DEST"
+cp "$SRC"/* "$DEST"/ 2>/dev/null
