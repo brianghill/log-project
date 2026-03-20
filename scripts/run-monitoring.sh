@@ -13,4 +13,4 @@ $SCRIPT_DIR/monitor.sh
 sleep 2
 
 # Generate summary
-$SCRIPT_DIR/summary.sh
+scp "$SRC"/* b*******l@IP_ADDR:~/central-monitoring/$HOSTNAME/
