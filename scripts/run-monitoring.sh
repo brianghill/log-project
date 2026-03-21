@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # AnchorPoint Monitoring Runner
-# Runs monitor.sh then summary.sh
 
 PROJECT_DIR="$HOME/log-project"
 SCRIPT_DIR="$PROJECT_DIR/scripts"
@@ -11,7 +10,7 @@ $SCRIPT_DIR/monitor.sh
 
 sleep 2
 
-# ✅ PUT THIS BACK
+# Run summary
 $SCRIPT_DIR/summary.sh
 
 HOSTNAME=$(hostname)
@@ -21,6 +20,14 @@ DEST="$HOME/central-monitoring/$HOSTNAME"
 
 mkdir -p "$DEST"
 
+# Local copy (always works)
 if [ -d "$SRC" ]; then
     cp "$SRC"/* "$DEST"/ 2>/dev/null
 fi
+
+# 🔥 REMOTE COPY (FIXED SCP)
+REMOTE_USER="brianhill"
+REMOTE_HOST="100.125.19.28"
+REMOTE_DIR="~/central-monitoring/$HOSTNAME"
+
+scp "$SRC"/* ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/ 2>/dev/null
