@@ -11,7 +11,7 @@ fi
 source "$CONFIG_FILE"
 
 # ===== CENTRAL SERVER CONFIG =====
-CENTRAL_SERVER="brianhill@dev-logproject"
+CENTRAL_SERVER="$HOME@dev-logproject"
 
 # ===== HOST + DATE =====
 HOSTNAME=$(hostname)
@@ -156,7 +156,7 @@ echo "Summary log created: $SUMMARY_LOG"
 
 # ===== CENTRAL SYNC =====
 
-CENTRAL_SERVER="brianhill@dev-logproject"
+CENTRAL_SERVER="$HOME@dev-logproject"
 
 # Create directory on central server
 ssh "$CENTRAL_SERVER" "mkdir -p ~/central-monitoring/$HOSTNAME"
