@@ -12,13 +12,13 @@ $SCRIPT_DIR/monitor.sh
 # Wait 2 seconds to ensure log file finishes writing
 sleep 2
 
-# Generate summary
-scp "$SRC"/* brianhill@100.125.19.28:~/central-monitoring/$HOSTNAME/
-
-
 HOSTNAME=$(hostname)
+
 SRC="$HOME/monitoring-reports/$HOSTNAME"
 DEST="$HOME/central-monitoring/$HOSTNAME"
 
 mkdir -p "$DEST"
-cp "$SRC"/* "$DEST"/ 2>/dev/null
+
+if [ -d "$SRC" ]; then
+    cp "$SRC"/* "$DEST"/ 2>/dev/null
+fi
