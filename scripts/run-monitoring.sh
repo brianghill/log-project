@@ -6,11 +6,13 @@
 PROJECT_DIR="$HOME/log-project"
 SCRIPT_DIR="$PROJECT_DIR/scripts"
 
-# Run monitoring collection
+# Run monitoring
 $SCRIPT_DIR/monitor.sh
 
-# Wait 2 seconds to ensure log file finishes writing
 sleep 2
+
+# ✅ PUT THIS BACK
+$SCRIPT_DIR/summary.sh
 
 HOSTNAME=$(hostname)
 
