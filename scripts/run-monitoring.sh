@@ -28,6 +28,8 @@ fi
 # 🔥 REMOTE COPY (FIXED SCP)
 REMOTE_USER="brianhill"
 REMOTE_HOST="100.125.19.28"
-REMOTE_DIR="~/central-monitoring/$HOSTNAME"
+REMOTE_DIR="home/brianhill/central-monitoring/$HOSTNAME"
+
+ssh ${REMOTE_USER}@${REMOTE_HOST} "mkdir -p ${REMOTE_DIR}"
 
 scp "$SRC"/* ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/ 2>/dev/null
