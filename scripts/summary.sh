@@ -120,11 +120,10 @@ elif [ "$SSH_STATUS" == "inactive" ]; then
 fi
 
 # ===== ALERT =====
-if [ "$OVERALL_RISK" == "HIGH" ]; then
-    echo "$DATE - $HOSTNAME - HIGH risk detected (CPU: $CPU_USAGE%, Disk: $DISK_USAGE%, Mem: $MEMORY_USAGE%, SSH: $SSH_STATUS)" >> "$ALERT_LOG"
+ALERT_LOG="$HOME/log-project/logs/alerts.log"
 
-    echo "ALERT: $HOSTNAME is in HIGH state (CPU: $CPU_USAGE%, Disk: $DISK_USAGE%, Mem: $MEMORY_USAGE%)" \
-    | mail -s "🚨 AnchorPoint Alert - $HOSTNAME" "$ALERT_EMAIL"
+if [ "$OVERALL_RISK" == "HIGH" ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') | ALERT | $HOSTNAME | CPU: $CPU_USAGE% | MEM: $MEMORY_USAGE% | DISK: $DISK_USAGE% | SSH: $SSH_STATUS" >> "$ALERT_LOG"
 fi
 
 # ===== SUMMARY =====
