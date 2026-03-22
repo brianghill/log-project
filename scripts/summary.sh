@@ -10,9 +10,6 @@ fi
 
 source "$CONFIG_FILE"
 
-# ===== CENTRAL SERVER CONFIG =====
-CENTRAL_SERVER="brianhill@100.125.19.28"
-
 # ===== HOST + DATE =====
 HOSTNAME=$(hostname)
 DATE=$(date +"%Y-%m-%d-%H%M%S")
@@ -25,18 +22,13 @@ mkdir -p "$REPORT_DIR"
 LATEST_LOG=$(ls -t "$HOME/log-project/logs/${HOSTNAME}-monitor-"*.log 2>/dev/null | head -n1)
 
 # ===== OUTPUT FILE PATHS =====
-ALERT_LOG="$REPORT_DIR/alerts.log"
+ALERT_LOG="$HOME/log-project/logs/alerts.log"
 HISTORY_LOG="$REPORT_DIR/history.log"
 DASHBOARD_LOG="$REPORT_DIR/dashboard.log"
 
 SUMMARY_LOG="$REPORT_DIR/${HOSTNAME}-Summary-$DATE.log"
 SUMMARY_HTML="$REPORT_DIR/${HOSTNAME}-Summary-$DATE.html"
 TREND_FILE="$REPORT_DIR/${HOSTNAME}-trend.log"
-
-# ===== RAW METRICS =====
-
-CPU_LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d',' -f1 | xargs)
-CPU_LOAD=${CPU_LOAD:-0}
 
 # ===== CPU USAGE =====
 read cpu user nice system idle iowait irq softirq steal guest < /proc/stat
@@ -79,7 +71,6 @@ MEMORY_USAGE=${MEMORY_USAGE:-0}
 DISK_USAGE=$(df / | awk 'NR==2 {print $5}' | tr -d '%')
 DISK_USAGE=${DISK_USAGE:-0}
 
-# Disk + Memory Status
 [ "$DISK_USAGE" -ge 90 ] && DISK_STATUS="HIGH" || DISK_STATUS="LOW"
 [ "$MEMORY_USAGE" -ge 90 ] && MEM_STATUS="HIGH" || MEM_STATUS="LOW"
 
@@ -151,13 +142,3 @@ echo "Executive Summary: System risk level is $OVERALL_RISK."
 } > "$SUMMARY_LOG"
 
 echo "Summary log created: $SUMMARY_LOG"
-
-# ===== CENTRAL SYNC =====
-
-ssh "$CENTRAL_SERVER" "mkdir -p ~/central-monitoring/$HOSTNAME"
-
-scp "$SUMMARY_LOG" "$CENTRAL_SERVER:~/central-monitoring/$HOSTNAME/"
-
-[ -f "$ALERT_LOG" ] && scp "$ALERT_LOG" "$CENTRAL_SERVER:~/central-monitoring/$HOSTNAME/"
-[ -f "$HISTORY_LOG" ] && scp "$HISTORY_LOG" "$CENTRAL_SERVER:~/central-monitoring/$HOSTNAME/"
-[ -f "$DASHBOARD_LOG" ] && scp "$DASHBOARD_LOG" "$CENTRAL_SERVER:~/central-monitoring/$HOSTNAME/"
