@@ -1,46 +1,32 @@
 #!/bin/bash
+# =========================================
+# run-monitoring.sh
+# Full monitoring pipeline: metrics, alerts, summary
+# =========================================
 
-# 🔍 DEBUG BLOCK
-echo "===== TRIGGERED $(date) =====" >> /tmp/monitor-debug.log
-echo "USER: $(whoami)" >> /tmp/monitor-debug.log
-echo "TTY: $(tty)" >> /tmp/monitor-debug.log
-echo "PPID: $PPID" >> /tmp/monitor-debug.log
-ps -fp $PPID >> /tmp/monitor-debug.log
-echo "CMDLINE:" >> /tmp/monitor-debug.log
-tr '\0' ' ' < /proc/$PPID/cmdline >> /tmp/monitor-debug.log
-echo -e "\n------------------------" >> /tmp/monitor-debug.log
+echo "📊 Collecting system metrics..."
 
-# Load config
-source ~/log-project/config/.env
+# Apply overrides if present
+DISK_CRIT_OVERRIDE=${DISK_CRIT_OVERRIDE:-80}
+MEM_CRIT_OVERRIDE=${MEM_CRIT_OVERRIDE:-80}
+LOAD_CRIT_OVERRIDE=${LOAD_CRIT_OVERRIDE:-5}
+NETWORK_CRIT_OVERRIDE=${NETWORK_CRIT_OVERRIDE:-100000}
 
-# AnchorPoint Monitoring Runner
-PROJECT_DIR="$HOME/log-project"
-SCRIPT_DIR="$PROJECT_DIR/scripts"
+# Run alerts collection
+"$HOME/log-project/scripts/alerts-only.sh"
 
-HOSTNAME=$(hostname)
+# Run summary creation
+"$HOME/log-project/scripts/summary.sh"
 
-# Run monitoring
-$SCRIPT_DIR/monitor.sh
-sleep 2
-$SCRIPT_DIR/summary.sh
+# Create monitoring report from alerts
+REPORT_FILE="$HOME/log-project/logs/dev-logproject-monitor-$(date +%Y-%m-%d-%H%M%S).log"
+cp "$HOME/log-project/logs/alerts.log" "$REPORT_FILE"
+echo "Monitoring report saved to:"
+echo "$REPORT_FILE"
 
-# Paths
-SRC="$HOME/monitoring-reports/$HOSTNAME"
+# Copy all summary logs to central monitoring (dev VM)
+CENTRAL_MONITOR_DIR="$HOME/central-monitoring/AP-Monitoring/dev-logproject"
+mkdir -p "$CENTRAL_MONITOR_DIR"
+cp "$HOME/monitoring-reports/dev-logproject/dev-logproject-Summary-"*.log "$CENTRAL_MONITOR_DIR/"
 
-# ✅ ONLY destination (client-based)
-DEST="$HOME/central-monitoring/$CLIENT_NAME/$HOSTNAME"
-
-mkdir -p "$DEST"
-
-# Local copy
-if [ -d "$SRC" ]; then
-    cp "$SRC"/* "$DEST"/ 2>/dev/null
-fi
-
-# Remote copy
-REMOTE_USER="brianhill"
-REMOTE_HOST="100.125.19.28"
-REMOTE_DIR="/home/brianhill/central-monitoring/$CLIENT_NAME/$HOSTNAME"
-
-ssh ${REMOTE_USER}@${REMOTE_HOST} "mkdir -p ${REMOTE_DIR}"
-scp "$SRC"/* ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/ 2>/dev/null
+echo "✅ Alert check complete. Log: $HOME/log-project/logs/alerts.log"

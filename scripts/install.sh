@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #############################################
-# AnchorPoint Monitoring - Installer v2
+# AnchorPoint Monitoring - Installer v3
 #############################################
 
 echo "🚀 Starting AnchorPoint Monitoring installation..."
@@ -73,10 +73,10 @@ chmod +x "$BASE_DIR/scripts/"*.sh 2>/dev/null
 echo "✅ Permissions set."
 
 #############################################
-# Step 5 - Cron Setup (auto monitoring)
+# Step 5 - Cron Setup
 #############################################
 
-echo "⏱ Setting up automated monitoring..."
+echo "⏱ Setting up monitoring cron..."
 
 CRON_JOB="*/5 * * * * $BASE_DIR/scripts/run-monitoring.sh"
 
@@ -85,16 +85,12 @@ CRON_JOB="*/5 * * * * $BASE_DIR/scripts/run-monitoring.sh"
 echo "✅ Monitoring scheduled every 5 minutes."
 
 #############################################
-# Step 6 - Email Capability Check
+# Step 6 - Initial Test Run
 #############################################
 
-echo "📧 Checking mail capability..."
+echo "🧪 Running initial monitoring test..."
 
-if command -v mail &> /dev/null; then
-    echo "✅ Mail command found."
-else
-    echo "⚠️ Mail not installed. Run: sudo apt install mailutils msmtp msmtp-mta"
-fi
+$BASE_DIR/scripts/run-monitoring.sh
 
 #############################################
 # Step 7 - Final Output
@@ -109,8 +105,9 @@ echo "Config:  $CONFIG_FILE"
 echo ""
 echo "👉 Next Steps:"
 echo "1. Edit config: nano $CONFIG_FILE"
-echo "2. Test run: $BASE_DIR/scripts/run-monitoring.sh"
-echo "3. View dashboard:"
+echo "2. View alerts:"
+echo "   cat $BASE_DIR/logs/alerts.log"
+echo "3. Watch dashboard:"
 echo "   watch -n 5 $BASE_DIR/scripts/central-dashboard.sh"
 echo ""
 echo "🔥 AnchorPoint Monitoring is LIVE."

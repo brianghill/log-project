@@ -1,144 +1,63 @@
 #!/bin/bash
+# =========================================
+# summary.sh
+# Generates a summary report of system alerts
+# =========================================
 
-# ===== LOAD CONFIG =====
-CONFIG_FILE="$HOME/log-project/config/config.conf"
+MONITORING_LOG_DIR="$HOME/log-project/logs"
+SUMMARY_DIR="$HOME/monitoring-reports/dev-logproject"
 
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "❌ Config file not found: $CONFIG_FILE"
-    exit 1
-fi
+mkdir -p "$SUMMARY_DIR"
 
-source "$CONFIG_FILE"
+# Generate timestamped summary filename
+SUMMARY_FILE="$SUMMARY_DIR/dev-logproject-Summary-$(date +%Y-%m-%d-%H%M%S).log"
 
-# ===== HOST + DATE =====
-HOSTNAME=$(hostname)
-DATE=$(date +"%Y-%m-%d-%H%M%S")
+echo "Summary for dev-logproject at $(date -u)" > "$SUMMARY_FILE"
+echo "=========================================" >> "$SUMMARY_FILE"
 
-# ===== REPORT DIRECTORY =====
-REPORT_DIR="$BASE_REPORT_DIR/$HOSTNAME"
-mkdir -p "$REPORT_DIR"
+# Loop through latest alerts
+ALERT_LINES=$(tail -n 50 "$MONITORING_LOG_DIR/alerts.log")  # last 50 lines
 
-# ===== LOG FILES =====
-LATEST_LOG=$(ls -t "$HOME/log-project/logs/${HOSTNAME}-monitor-"*.log 2>/dev/null | head -n1)
-
-# ===== OUTPUT FILE PATHS =====
-ALERT_LOG="$HOME/log-project/logs/alerts.log"
-HISTORY_LOG="$REPORT_DIR/history.log"
-DASHBOARD_LOG="$REPORT_DIR/dashboard.log"
-
-SUMMARY_LOG="$REPORT_DIR/${HOSTNAME}-Summary-$DATE.log"
-SUMMARY_HTML="$REPORT_DIR/${HOSTNAME}-Summary-$DATE.html"
-TREND_FILE="$REPORT_DIR/${HOSTNAME}-trend.log"
-
-# ===== CPU USAGE =====
-read cpu user nice system idle iowait irq softirq steal guest < /proc/stat
-total1=$((user + nice + system + idle + iowait + irq + softirq + steal))
-idle1=$idle
-
-sleep 1
-
-read cpu user nice system idle iowait irq softirq steal guest < /proc/stat
-total2=$((user + nice + system + idle + iowait + irq + softirq + steal))
-idle2=$idle
-
-total_diff=$((total2 - total1))
-idle_diff=$((idle2 - idle1))
-
-CPU_USAGE=$(( (100 * (total_diff - idle_diff)) / total_diff ))
-
-# ===== CPU STATUS =====
-if [ "$CPU_USAGE" -ge "$CPU_THRESHOLD" ]; then
-    CPU_STATUS="HIGH"
-elif [ "$CPU_USAGE" -ge 50 ]; then
-    CPU_STATUS="MEDIUM"
+if [[ -z "$ALERT_LINES" ]]; then
+    echo "No alerts in the last run." >> "$SUMMARY_FILE"
 else
-    CPU_STATUS="LOW"
+    echo "$ALERT_LINES" >> "$SUMMARY_FILE"
 fi
 
-# Temperature
-if command -v vcgencmd >/dev/null 2>&1; then
-    TEMP=$(vcgencmd measure_temp 2>/dev/null | grep -o '[0-9]*\.[0-9]*')
-else
-    TEMP=0
-fi
-TEMP=${TEMP:-0}
+# Extract latest CPU, Disk, Memory metrics for easier summary
+LAST_DISK=$(grep -E 'DISK' "$MONITORING_LOG_DIR/alerts.log" | tail -1 | awk '{print $3}')
+LAST_MEM=$(grep -E 'MEMORY' "$MONITORING_LOG_DIR/alerts.log" | tail -1 | awk '{print $3}')
+LAST_CPU=$(grep -E 'CPU' "$MONITORING_LOG_DIR/alerts.log" | tail -1 | awk '{print $4}')
+LAST_NET=$(grep -E 'NETWORK' "$MONITORING_LOG_DIR/alerts.log" | tail -1 | awk '{print $4}')
 
-# Memory
-MEMORY_USAGE=$(free | awk '/Mem:/ { printf "%.0f", $3/$2*100 }')
-MEMORY_USAGE=${MEMORY_USAGE:-0}
+# Integer checks
+[[ "$LAST_DISK" =~ ^[0-9]+$ ]] || LAST_DISK=0
+[[ "$LAST_MEM" =~ ^[0-9]+$ ]] || LAST_MEM=0
+[[ "$LAST_CPU" =~ ^[0-9.]+$ ]] || LAST_CPU=0
 
-# Disk
-DISK_USAGE=$(df / | awk 'NR==2 {print $5}' | tr -d '%')
-DISK_USAGE=${DISK_USAGE:-0}
+echo "" >> "$SUMMARY_FILE"
+echo "Latest Metrics:" >> "$SUMMARY_FILE"
+echo "Disk Usage: $LAST_DISK%" >> "$SUMMARY_FILE"
+echo "Memory Usage: $LAST_MEM%" >> "$SUMMARY_FILE"
+echo "CPU Load: $LAST_CPU" >> "$SUMMARY_FILE"
+[[ -n "$LAST_NET" ]] && echo "Network RX: $LAST_NET bytes/sec" >> "$SUMMARY_FILE"
 
-[ "$DISK_USAGE" -ge 90 ] && DISK_STATUS="HIGH" || DISK_STATUS="LOW"
-[ "$MEMORY_USAGE" -ge 90 ] && MEM_STATUS="HIGH" || MEM_STATUS="LOW"
+# Determine status
+THRESHOLD_DISK=80
+THRESHOLD_MEM=80
+THRESHOLD_CPU=5
 
-# Network
-INTERFACE=$(ip route | grep default | awk '{print $5}' | head -n1)
-RX_BYTES=$(cat /sys/class/net/${INTERFACE}/statistics/rx_bytes 2>/dev/null || echo 0)
-TX_BYTES=$(cat /sys/class/net/${INTERFACE}/statistics/tx_bytes 2>/dev/null || echo 0)
-
-RX_MB=$((RX_BYTES / 1024 / 1024))
-TX_MB=$((TX_BYTES / 1024 / 1024))
-
-sleep 1
-
-RX_BYTES2=$(cat /sys/class/net/${INTERFACE}/statistics/rx_bytes 2>/dev/null || echo 0)
-TX_BYTES2=$(cat /sys/class/net/${INTERFACE}/statistics/tx_bytes 2>/dev/null || echo 0)
-
-RX_RATE=$(echo "scale=2; ($RX_BYTES2 - $RX_BYTES)/1024/1024" | bc)
-TX_RATE=$(echo "scale=2; ($TX_BYTES2 - $TX_BYTES)/1024/1024" | bc)
-
-# SSH
-if systemctl is-active ssh >/dev/null 2>&1; then
-    SSH_STATUS="active"
-else
-    SSH_STATUS="inactive"
+STATUS="OK"
+if [ "$LAST_DISK" -ge "$THRESHOLD_DISK" ] || [ "$LAST_MEM" -ge "$THRESHOLD_MEM" ] || (( $(echo "$LAST_CPU >= $THRESHOLD_CPU" | bc -l) )); then
+    STATUS="CRITICAL"
 fi
 
-UPTIME_INFO=$(uptime -p)
+echo "" >> "$SUMMARY_FILE"
+echo "Overall Status: $STATUS" >> "$SUMMARY_FILE"
 
-# ===== RISK =====
-OVERALL_RISK="LOW"
+echo "Summary log created: $SUMMARY_FILE"
 
-if (( CPU_USAGE > 85 )); then
-    OVERALL_RISK="HIGH"
-elif [ "$DISK_USAGE" -ge 90 ] || [ "$MEMORY_USAGE" -ge 90 ]; then
-    OVERALL_RISK="HIGH"
-elif [ "$SSH_STATUS" == "inactive" ]; then
-    OVERALL_RISK="HIGH"
-fi
-
-# ===== ALERT =====
-ALERT_LOG="$HOME/log-project/logs/alerts.log"
-
-if [ "$OVERALL_RISK" == "HIGH" ]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') | ALERT | $HOSTNAME | CPU: $CPU_USAGE% | MEM: $MEMORY_USAGE% | DISK: $DISK_USAGE% | SSH: $SSH_STATUS" >> "$ALERT_LOG"
-fi
-
-# ===== SUMMARY =====
-{
-echo "AnchorPoint Monitoring"
-echo "System Health Summary"
-echo "Host: $HOSTNAME"
-echo "Date: $DATE"
-echo "----------------------------------"
-echo "CPU Load: $CPU_LOAD"
-echo "CPU Usage: $CPU_USAGE% ($CPU_STATUS)"
-echo "Disk Usage: $DISK_USAGE% ($DISK_STATUS)"
-echo "Memory Usage: $MEMORY_USAGE% ($MEM_STATUS)"
-echo "Temperature: ${TEMP}°C"
-echo "Uptime: $UPTIME_INFO"
-echo "Network RX: $RX_MB MB"
-echo "Network TX: $TX_MB MB"
-echo "RX Rate: $RX_RATE MB/s"
-echo "TX Rate: $TX_RATE MB/s"
-echo "SSH Status: $SSH_STATUS"
-echo "----------------------------------"
-echo "Overall Risk Level: $OVERALL_RISK"
-echo ""
-echo "Executive Summary: System risk level is $OVERALL_RISK."
-} > "$SUMMARY_LOG"
-
-echo "Summary log created: $SUMMARY_LOG"
+# Copy summary to central monitoring folder (dev VM)
+CENTRAL_MONITOR_DIR="$HOME/central-monitoring/AP-Monitoring/dev-logproject"
+mkdir -p "$CENTRAL_MONITOR_DIR"
+cp "$SUMMARY_FILE" "$CENTRAL_MONITOR_DIR/"
