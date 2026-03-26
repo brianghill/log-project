@@ -1,131 +1,70 @@
 #!/usr/bin/env python3
+# log_analyzer.py
+# Analyzes collected system metrics and writes summary logs per host.
 
 import os
-import psutil
+import socket
 import datetime
 
-# =====================================
-# CONFIGURATION
-# =====================================
+# ===== CONFIG =====
+CENTRAL_MONITORING_DIR = os.path.expanduser("~/central-monitoring/AP-Monitoring")
+LOGS_DIR = os.path.expanduser("~/log-project/logs")
+METRICS_FILE_PATTERN = "dev-logproject-monitor-*.log"  # fallback pattern if needed
+ALERTS_LOG_FILE = os.path.join(LOGS_DIR, "alerts.log")
 
-BASE_DIR = os.path.expanduser("~/log-project")
-LOG_DIR = os.path.join(BASE_DIR, "logs")
-MAX_LOG_SIZE = 10 * 1024 * 1024  # 10MB
+# ===== HOST INFO =====
+HOSTNAME = socket.gethostname()           # local hostname
+HOSTNAME_FQDN = socket.getfqdn()          # fully qualified domain name
 
-os.makedirs(LOG_DIR, exist_ok=True)
+# ===== TIMESTAMP =====
+NOW = datetime.datetime.utcnow()
+TIMESTAMP = NOW.strftime("%Y-%m-%d-%H%M%S")
 
-# =====================================
-# DAILY LOG FILE NAME
-# =====================================
+# ===== DIRECTORIES =====
+host_dir = os.path.join(CENTRAL_MONITORING_DIR, HOSTNAME)
+os.makedirs(host_dir, exist_ok=True)
 
-today_str = datetime.datetime.now().strftime("%Y-%m-%d")
-log_filename = f"health-{today_str}.log"
-log_path = os.path.join(LOG_DIR, log_filename)
+# ===== FUNCTIONS =====
+def parse_alerts(alerts_file):
+    """Parse alerts.log for the latest system metrics."""
+    alerts = {}
+    if not os.path.exists(alerts_file):
+        return alerts
 
-# =====================================
-# SIZE ROTATION (10MB safeguard)
-# =====================================
+    with open(alerts_file, "r") as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith("🚨 CRITICAL DISK:"):
+                alerts["disk"] = line.split(":")[1].strip()
+            elif line.startswith("🚨 CRITICAL MEMORY:"):
+                alerts["memory"] = line.split(":")[1].strip()
+            elif line.startswith("🚨 CRITICAL CPU LOAD:"):
+                alerts["cpu"] = line.split(":")[1].strip()
+            elif line.startswith("🚨 CRITICAL NETWORK RX:"):
+                alerts["network"] = line.split(":")[1].strip()
+    return alerts
 
-if os.path.exists(log_path) and os.path.getsize(log_path) >= MAX_LOG_SIZE:
-    counter = 1
-    while True:
-        rotated_name = f"{log_filename}.{counter}"
-        rotated_path = os.path.join(LOG_DIR, rotated_name)
-        if not os.path.exists(rotated_path):
-            os.rename(log_path, rotated_path)
-            break
-        counter += 1
+def write_summary(host_dir, timestamp, alerts):
+    """Write a per-host summary log in the central monitoring folder."""
+    summary_file = os.path.join(host_dir, f"{HOSTNAME}-Summary-{timestamp}.log")
+    with open(summary_file, "w") as f:
+        f.write(f"==== SUMMARY CHECK {NOW.strftime('%a %b %d %H:%M:%S UTC %Y')} ====\n")
+        f.write(f"HOST: {HOSTNAME} ({HOSTNAME_FQDN})\n")
+        f.write("\nSYSTEM ALERTS:\n")
+        if not alerts:
+            f.write("No critical alerts.\n")
+        else:
+            for key, val in alerts.items():
+                f.write(f"{key.upper()}: {val}\n")
+    return summary_file
 
-# =====================================
-# COLLECT METRICS
-# =====================================
+def main():
+    # Parse alerts
+    alerts = parse_alerts(ALERTS_LOG_FILE)
 
-timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # Write summary
+    summary_file = write_summary(host_dir, TIMESTAMP, alerts)
+    print(f"✅ Summary written: {summary_file}")
 
-cpu_usage = round(psutil.cpu_percent(interval=1), 1)
-ram_usage = round(psutil.virtual_memory().percent, 1)
-disk_usage = round(psutil.disk_usage('/').percent, 1)
-
-net_io = psutil.net_io_counters()
-network_bytes = net_io.bytes_sent + net_io.bytes_recv
-network_gb = round(network_bytes / (1024**3), 2)
-
-# =====================================
-# DETERMINE STATUS LEVEL
-# =====================================
-
-level = "INFO"
-
-if cpu_usage > 85 or ram_usage > 85:
-    level = "WARN"
-
-if disk_usage > 90:
-    level = "ERROR"
-
-# =====================================
-# STRUCTURED & ALIGNED LOG ENTRY
-# =====================================
-            
-log_entry = (
-    f"[{timestamp}] | "
-    f"{level:<5} | "
-    f"{'SYSTEM':<7} | "
-    f"CPU={cpu_usage:<5}% | "
-    f"RAM={ram_usage:<5}% | "
-    f"DISK={disk_usage:<5}% | "
-    f"NETWORK={network_gb}GB ({network_bytes} bytes)\n"
-)
-
-with open(log_path, "a") as f:
-    f.write(log_entry)
-
-#!/bin/bash
-
-# ==============================
-# SYSTEM INFORMATION COLLECTION
-# ==============================
-
-HOSTNAME=$(hostname)
-IP_ADDRESS=$(hostname -I | awk '{print $1}')
-OS_VERSION=$(grep PRETTY_NAME /etc/os-release | cut -d= -f2 | tr -d '"')
-DATE=$(date)
-LOAD=$(uptime | awk -F'load average:' '{print $2}')
-DISK_USAGE=$(df -h / | awk 'NR==2 {print $5}')
-MEMORY_USAGE=$(free -h | awk '/Mem:/ {print $3 " / " $2}')
-
-REPORT_DIR="$HOME/log-project"
-REPORT_FILE="$REPORT_DIR/summary.txt"
-
-mkdir -p $REPORT_DIR
-
-# ==============================
-# GENERATE STRUCTURED REPORT
-# ==============================
-
-echo "========================================" > $REPORT_FILE
-echo "System Monitoring Report" >> $REPORT_FILE
-echo "========================================" >> $REPORT_FILE
-echo "Hostname: $HOSTNAME" >> $REPORT_FILE
-echo "IP Address: $IP_ADDRESS" >> $REPORT_FILE
-echo "Operating System: $OS_VERSION" >> $REPORT_FILE
-echo "Report Generated: $DATE" >> $REPORT_FILE
-echo "========================================" >> $REPORT_FILE
-echo "" >> $REPORT_FILE
-
-echo "Service Health:" >> $REPORT_FILE
-systemctl --failed >> $REPORT_FILE
-echo "" >> $REPORT_FILE
-
-echo "Resource Status:" >> $REPORT_FILE
-echo "Load Average:$LOAD" >> $REPORT_FILE
-echo "Disk Usage (root): $DISK_USAGE" >> $REPORT_FILE
-echo "Memory Usage: $MEMORY_USAGE" >> $REPORT_FILE
-echo "" >> $REPORT_FILE
-
-echo "Security (Failed SSH Logins - Last 24h):" >> $REPORT_FILE
-grep "Failed password" /var/log/auth.log | tail -n 10 >> $REPORT_FILE
-echo "" >> $REPORT_FILE
-
-echo "Recent System Errors:" >> $REPORT_FILE
-grep -i "error" /var/log/syslog | tail -n 10 >> $REPORT_FILE
-echo "" >> $REPORT_FILE
+if __name__ == "__main__":
+    main()
