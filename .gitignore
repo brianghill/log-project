@@ -18,7 +18,7 @@ reports/*.txt
 reports/.last_*
 
 # Local config
-config/config.conf
+#config/config.conf
 
 # Personal docs
 brians_docs/
