@@ -1,91 +1,170 @@
 #!/bin/bash
-# =============================================
-# dev-logproject / Monitoring Summary Script
-# =============================================
-# Generates a summary log from monitoring reports.
-# Maintains historical summaries in central-monitoring.
-# Dynamically names folders/files based on hostname.
-# =============================================
 
-# ----------------------------
-# Arguments / Config
-# ----------------------------
-SUMMARY_FILE="$1"
+# ===== LOAD CONFIG =====
+CONFIG_FILE="$HOME/log-project/config/config.conf"
 
-if [ -z "$SUMMARY_FILE" ]; then
-    echo "Usage: $0 <summary-file-path>"
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "❌ Config file not found: $CONFIG_FILE"
     exit 1
 fi
 
-# Dynamic hostname
-HOSTNAME=$(hostname -s)
+source "$CONFIG_FILE"
 
-# Paths
-LOG_DIR=~/log-project/logs
-SUMMARY_DIR=$(dirname "$SUMMARY_FILE")
+# ===== CENTRAL SERVER CONFIG =====
+CENTRAL_SERVER="brianhill@100.125.19.28"
 
-# Ensure summary directory exists
-mkdir -p "$SUMMARY_DIR"
+# ===== HOST + DATE =====
+HOSTNAME=$(hostname)
+DATE=$(date +"%Y-%m-%d-%H%M%S")
 
-# ----------------------------
-# Collect Latest Monitoring Report
-# ----------------------------
-LATEST_REPORT=$(ls -1t "$LOG_DIR"/*-monitor-*.log 2>/dev/null | head -n 1)
+# ===== REPORT DIRECTORY =====
+REPORT_DIR="$BASE_REPORT_DIR/$HOSTNAME"
+mkdir -p "$REPORT_DIR"
 
-if [ -z "$LATEST_REPORT" ]; then
-    echo "No monitoring reports found in $LOG_DIR" > "$SUMMARY_FILE"
-    exit 0
-fi
+# ===== OUTPUT FILE PATHS =====
+ALERT_LOG="$REPORT_DIR/alerts.log"
+HISTORY_LOG="$REPORT_DIR/history.log"
+DASHBOARD_LOG="$REPORT_DIR/dashboard.log"
 
-# ----------------------------
-# Generate Summary Header
-# ----------------------------
-echo "==========================================" > "$SUMMARY_FILE"
-echo " MONITORING SUMMARY - $HOSTNAME " >> "$SUMMARY_FILE"
-echo " Generated: $(date) " >> "$SUMMARY_FILE"
-echo " Source Report: $LATEST_REPORT " >> "$SUMMARY_FILE"
-echo "==========================================" >> "$SUMMARY_FILE"
-echo "" >> "$SUMMARY_FILE"
+SUMMARY_LOG="$REPORT_DIR/${HOSTNAME}-Summary-$DATE.log"
 
-# ----------------------------
-# Parse and Summarize Alerts
-# ----------------------------
-# Check if alerts exist
-ALERT_LOG="$LOG_DIR/alerts.log"
+# ===== RAW METRICS =====
 
-if [ -f "$ALERT_LOG" ] && [ -s "$ALERT_LOG" ]; then
-    echo "Recent Alerts:" >> "$SUMMARY_FILE"
-    grep -E "🚨|CRITICAL" "$ALERT_LOG" | tail -n 20 >> "$SUMMARY_FILE"
-    echo "" >> "$SUMMARY_FILE"
+CPU_LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d',' -f1 | xargs)
+CPU_LOAD=${CPU_LOAD:-0}
+
+# ===== CPU USAGE (SAFE) =====
+read cpu user nice system idle iowait irq softirq steal guest < /proc/stat
+total1=$((user + nice + system + idle + iowait + irq + softirq + steal))
+idle1=$idle
+
+sleep 1
+
+read cpu user nice system idle iowait irq softirq steal guest < /proc/stat
+total2=$((user + nice + system + idle + iowait + irq + softirq + steal))
+idle2=$idle
+
+total_diff=$((total2 - total1))
+idle_diff=$((idle2 - idle1))
+
+if [ "$total_diff" -gt 0 ]; then
+    CPU_USAGE=$(( (100 * (total_diff - idle_diff)) / total_diff ))
 else
-    echo "No recent alerts." >> "$SUMMARY_FILE"
-    echo "" >> "$SUMMARY_FILE"
+    CPU_USAGE=0
 fi
 
-# ----------------------------
-# Extract Metrics from Latest Report
-# ----------------------------
-echo "System Metrics (Latest Report):" >> "$SUMMARY_FILE"
-grep -E "DISK|MEMORY|CPU|NETWORK" "$LATEST_REPORT" >> "$SUMMARY_FILE"
-echo "" >> "$SUMMARY_FILE"
+CPU_USAGE=${CPU_USAGE:-0}
 
-# ----------------------------
-# Optional: Additional Stats
-# ----------------------------
-if grep -q "CRITICAL" "$LATEST_REPORT"; then
-    echo "⚠️ Some metrics are critical. Review immediately!" >> "$SUMMARY_FILE"
+# ===== CPU STATUS =====
+if [ "$CPU_USAGE" -ge "${CPU_THRESHOLD:-80}" ]; then
+    CPU_STATUS="HIGH"
+elif [ "$CPU_USAGE" -ge 50 ]; then
+    CPU_STATUS="MEDIUM"
+else
+    CPU_STATUS="LOW"
 fi
 
-# ----------------------------
-# Keep Historical Summaries Short (Optional)
-# ----------------------------
-# Max 50 summaries per host
-MAX_SUMMARIES=50
-cd "$SUMMARY_DIR" || exit
-SUMMARY_COUNT=$(ls -1 $HOSTNAME-Summary-*.log 2>/dev/null | wc -l)
-if [ "$SUMMARY_COUNT" -gt "$MAX_SUMMARIES" ]; then
-    OLDEST=$(ls -1t $HOSTNAME-Summary-*.log | tail -n +$(($MAX_SUMMARIES + 1)))
-    rm -f $OLDEST
+# ===== TEMPERATURE =====
+if command -v vcgencmd >/dev/null 2>&1; then
+    TEMP=$(vcgencmd measure_temp 2>/dev/null | grep -o '[0-9]*\.[0-9]*')
+else
+    TEMP=0
+fi
+TEMP=${TEMP:-0}
+
+# ===== MEMORY =====
+MEMORY_USAGE=$(free | awk '/Mem:/ { printf "%.0f", $3/$2*100 }')
+MEMORY_USAGE=${MEMORY_USAGE:-0}
+
+# ===== DISK =====
+DISK_USAGE=$(df / | awk 'NR==2 {print $5}' | tr -d '%')
+DISK_USAGE=${DISK_USAGE:-0}
+
+# ===== STATUS FLAGS =====
+[ "$DISK_USAGE" -ge 90 ] && DISK_STATUS="HIGH" || DISK_STATUS="LOW"
+[ "$MEMORY_USAGE" -ge 90 ] && MEM_STATUS="HIGH" || MEM_STATUS="LOW"
+
+# ===== NETWORK (SAFE) =====
+INTERFACE=$(ip route 2>/dev/null | awk '/default/ {print $5}' | head -n1)
+INTERFACE=${INTERFACE:-eth0}
+
+RX_BYTES=$(cat /sys/class/net/${INTERFACE}/statistics/rx_bytes 2>/dev/null || echo 0)
+TX_BYTES=$(cat /sys/class/net/${INTERFACE}/statistics/tx_bytes 2>/dev/null || echo 0)
+
+RX_MB=$((RX_BYTES / 1024 / 1024))
+TX_MB=$((TX_BYTES / 1024 / 1024))
+
+sleep 1
+
+RX_BYTES2=$(cat /sys/class/net/${INTERFACE}/statistics/rx_bytes 2>/dev/null || echo 0)
+TX_BYTES2=$(cat /sys/class/net/${INTERFACE}/statistics/tx_bytes 2>/dev/null || echo 0)
+
+if command -v bc >/dev/null 2>&1; then
+    RX_RATE=$(echo "scale=2; ($RX_BYTES2 - $RX_BYTES)/1024/1024" | bc)
+    TX_RATE=$(echo "scale=2; ($TX_BYTES2 - $TX_BYTES)/1024/1024" | bc)
+else
+    RX_RATE=0
+    TX_RATE=0
 fi
 
-echo "✅ Summary written: $SUMMARY_FILE"
+# ===== SSH =====
+if systemctl is-active ssh >/dev/null 2>&1; then
+    SSH_STATUS="active"
+else
+    SSH_STATUS="inactive"
+fi
+
+UPTIME_INFO=$(uptime -p)
+
+# ===== RISK =====
+OVERALL_RISK="LOW"
+
+if [ "$CPU_USAGE" -gt 85 ]; then
+    OVERALL_RISK="HIGH"
+elif [ "$DISK_USAGE" -ge 90 ] || [ "$MEMORY_USAGE" -ge 90 ]; then
+    OVERALL_RISK="HIGH"
+elif [ "$SSH_STATUS" = "inactive" ]; then
+    OVERALL_RISK="HIGH"
+fi
+
+# ===== ALERT =====
+ALERT_LOG="$HOME/log-project/logs/alerts.log"
+
+if [ "$OVERALL_RISK" = "HIGH" ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') | ALERT | $HOSTNAME | CPU: $CPU_USAGE% | MEM: $MEMORY_USAGE% | DISK: $DISK_USAGE% | SSH: $SSH_STATUS" >> "$ALERT_LOG"
+fi
+
+# ===== SUMMARY =====
+{
+echo "AnchorPoint Monitoring"
+echo "System Health Summary"
+echo "Host: $HOSTNAME"
+echo "Date: $DATE"
+echo "----------------------------------"
+echo "CPU Load: $CPU_LOAD"
+echo "CPU Usage: $CPU_USAGE% ($CPU_STATUS)"
+echo "Disk Usage: $DISK_USAGE% ($DISK_STATUS)"
+echo "Memory Usage: $MEMORY_USAGE% ($MEM_STATUS)"
+echo "Temperature: ${TEMP}°C"
+echo "Uptime: $UPTIME_INFO"
+echo "Network RX: $RX_MB MB"
+echo "Network TX: $TX_MB MB"
+echo "RX Rate: $RX_RATE MB/s"
+echo "TX Rate: $TX_RATE MB/s"
+echo "SSH Status: $SSH_STATUS"
+echo "----------------------------------"
+echo "Overall Risk Level: $OVERALL_RISK"
+echo ""
+echo "Executive Summary: System risk level is $OVERALL_RISK."
+} > "$SUMMARY_LOG"
+
+echo "Summary log created: $SUMMARY_LOG"
+
+# ===== CENTRAL SYNC =====
+ssh "$CENTRAL_SERVER" "mkdir -p ~/central-monitoring/$HOSTNAME"
+
+scp "$SUMMARY_LOG" "$CENTRAL_SERVER:~/central-monitoring/$HOSTNAME/"
+
+[ -f "$ALERT_LOG" ] && scp "$ALERT_LOG" "$CENTRAL_SERVER:~/central-monitoring/$HOSTNAME/"
+[ -f "$HISTORY_LOG" ] && scp "$HISTORY_LOG" "$CENTRAL_SERVER:~/central-monitoring/$HOSTNAME/"
+[ -f "$DASHBOARD_LOG" ] && scp "$DASHBOARD_LOG" "$CENTRAL_SERVER:~/central-monitoring/$HOSTNAME/"

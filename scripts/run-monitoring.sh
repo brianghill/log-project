@@ -1,39 +1,49 @@
 #!/bin/bash
-# =============================================
-# Run system monitoring and generate summaries
-# =============================================
 
-# Set thresholds (can be overridden by environment variables)
-DISK_THRESHOLD=${DISK_CRIT_OVERRIDE:-80}
-MEM_THRESHOLD=${MEM_CRIT_OVERRIDE:-80}
-CPU_THRESHOLD=${LOAD_CRIT_OVERRIDE:-1.0}
-NETWORK_THRESHOLD=${NETWORK_CRIT_OVERRIDE:-10000}  # bytes/sec
+BASE_DIR="$HOME/log-project"
+SCRIPTS_DIR="$BASE_DIR/scripts"
+LOG_DIR="$BASE_DIR/logs"
 
-# Detect hostname dynamically
-HOSTNAME=$(hostname -s)
-
-# Paths
-LOG_DIR=~/log-project/logs
-SUMMARY_DIR=~/central-monitoring/AP-Monitoring/$HOSTNAME
-SUMMARY_FILE="$SUMMARY_DIR/$HOSTNAME-Summary-$(date +%Y-%m-%d-%H%M%S).log"
-
-# Ensure directories exist
 mkdir -p "$LOG_DIR"
-mkdir -p "$SUMMARY_DIR"
 
-# Run alerts-only check
-~/log-project/scripts/alerts-only.sh
+HOSTNAME=$(hostname)
+TIMESTAMP=$(date +"%Y-%m-%d-%H%M%S")
 
-# Generate monitoring report
+REPORT_FILE="$LOG_DIR/${HOSTNAME}-monitor-${TIMESTAMP}.log"
+
 echo "📊 Collecting system metrics..."
-REPORT_FILE="$LOG_DIR/$HOSTNAME-monitor-$(date +%Y-%m-%d-%H%M%S).log"
-~/log-project/scripts/log_analyzer.py > "$REPORT_FILE"
+
+# ==============================
+# RUN ANALYZER
+# ==============================
+python3 "$SCRIPTS_DIR/log_analyzer.py" > "$REPORT_FILE"
 
 echo "Monitoring report saved to:"
 echo "$REPORT_FILE"
 
-# Run summary
-~/log-project/scripts/summary.sh "$SUMMARY_FILE"
+# ==============================
+# RUN SUMMARY
+# ==============================
+SUMMARY_OUTPUT=$("$SCRIPTS_DIR/summary.sh")
 
-echo "Summary log created: $SUMMARY_FILE"
-echo "✅ Alert check complete. Log: $LOG_DIR/alerts.log"
+echo "$SUMMARY_OUTPUT"
+
+# Extract summary file path
+SUMMARY_FILE=$(echo "$SUMMARY_OUTPUT" | grep -o '/.*Summary.*\.log')
+
+# ==============================
+# COPY TO CENTRAL MONITORING
+# ==============================
+CENTRAL_DIR="$HOME/central-monitoring/AP-Monitoring/$HOSTNAME"
+mkdir -p "$CENTRAL_DIR"
+
+if [ -f "$SUMMARY_FILE" ]; then
+    cp "$SUMMARY_FILE" "$CENTRAL_DIR/"
+fi
+
+# ==============================
+# RUN ALERTS
+# ==============================
+"$SCRIPTS_DIR/alerts-only.sh"
+
+echo "✅ Monitoring run complete."
