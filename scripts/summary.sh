@@ -160,11 +160,18 @@ echo "Executive Summary: System risk level is $OVERALL_RISK."
 
 echo "Summary log created: $SUMMARY_LOG"
 
-# ===== CENTRAL SYNC =====
-ssh "$CENTRAL_SERVER" "mkdir -p ~/central-monitoring/$HOSTNAME"
+# ===== CENTRAL SYNC (to dev-logproject) =====
 
-scp "$SUMMARY_LOG" "$CENTRAL_SERVER:~/central-monitoring/$HOSTNAME/"
+# Remote folder on dev-logproject
+REMOTE_DIR="/home/brianhill/central-monitoring/AP-Monitoring/$HOSTNAME"
 
-[ -f "$ALERT_LOG" ] && scp "$ALERT_LOG" "$CENTRAL_SERVER:~/central-monitoring/$HOSTNAME/"
-[ -f "$HISTORY_LOG" ] && scp "$HISTORY_LOG" "$CENTRAL_SERVER:~/central-monitoring/$HOSTNAME/"
-[ -f "$DASHBOARD_LOG" ] && scp "$DASHBOARD_LOG" "$CENTRAL_SERVER:~/central-monitoring/$HOSTNAME/"
+# Make sure the directory exists on dev VM
+ssh "$CENTRAL_SERVER" "mkdir -p $REMOTE_DIR"
+
+# Copy the summary log to dev VM
+scp "$SUMMARY_LOG" "$CENTRAL_SERVER:$REMOTE_DIR/"
+
+# Copy optional logs if they exist
+[ -f "$ALERT_LOG" ] && scp "$ALERT_LOG" "$CENTRAL_SERVER:$REMOTE_DIR/"
+[ -f "$HISTORY_LOG" ] && scp "$HISTORY_LOG" "$CENTRAL_SERVER:$REMOTE_DIR/"
+[ -f "$DASHBOARD_LOG" ] && scp "$DASHBOARD_LOG" "$CENTRAL_SERVER:$REMOTE_DIR/"
