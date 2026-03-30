@@ -22,16 +22,18 @@ REPORT_DIR="$BASE_REPORT_DIR/$HOSTNAME"
 mkdir -p "$REPORT_DIR"
 
 # ===== OUTPUT FILE PATHS =====
-SUMMARY_LOG="$REPORT_DIR/${HOSTNAME}-Summary-$DATE.log"
-ALERT_LOG="$HOME/log-project/logs/alerts.log"
+ALERT_LOG="$REPORT_DIR/alerts.log"
 HISTORY_LOG="$REPORT_DIR/history.log"
 DASHBOARD_LOG="$REPORT_DIR/dashboard.log"
 
-# ===== CPU LOAD =====
+SUMMARY_LOG="$REPORT_DIR/${HOSTNAME}-Summary-$DATE.log"
+
+# ===== RAW METRICS =====
+
 CPU_LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d',' -f1 | xargs)
 CPU_LOAD=${CPU_LOAD:-0}
 
-# ===== CPU USAGE =====
+# ===== CPU USAGE (SAFE) =====
 read cpu user nice system idle iowait irq softirq steal guest < /proc/stat
 total1=$((user + nice + system + idle + iowait + irq + softirq + steal))
 idle1=$idle
@@ -51,6 +53,8 @@ else
     CPU_USAGE=0
 fi
 
+CPU_USAGE=${CPU_USAGE:-0}
+
 # ===== CPU STATUS =====
 if [ "$CPU_USAGE" -ge "${CPU_THRESHOLD:-80}" ]; then
     CPU_STATUS="HIGH"
@@ -59,6 +63,14 @@ elif [ "$CPU_USAGE" -ge 50 ]; then
 else
     CPU_STATUS="LOW"
 fi
+
+# ===== TEMPERATURE =====
+if command -v vcgencmd >/dev/null 2>&1; then
+    TEMP=$(vcgencmd measure_temp 2>/dev/null | grep -o '[0-9]*\.[0-9]*')
+else
+    TEMP=0
+fi
+TEMP=${TEMP:-0}
 
 # ===== MEMORY =====
 MEMORY_USAGE=$(free | awk '/Mem:/ { printf "%.0f", $3/$2*100 }')
@@ -72,7 +84,7 @@ DISK_USAGE=${DISK_USAGE:-0}
 [ "$DISK_USAGE" -ge 90 ] && DISK_STATUS="HIGH" || DISK_STATUS="LOW"
 [ "$MEMORY_USAGE" -ge 90 ] && MEM_STATUS="HIGH" || MEM_STATUS="LOW"
 
-# ===== NETWORK =====
+# ===== NETWORK (SAFE) =====
 INTERFACE=$(ip route 2>/dev/null | awk '/default/ {print $5}' | head -n1)
 INTERFACE=${INTERFACE:-eth0}
 
@@ -107,13 +119,19 @@ UPTIME_INFO=$(uptime -p)
 # ===== RISK =====
 OVERALL_RISK="LOW"
 
-if [ "$CPU_USAGE" -gt 85 ] || [ "$DISK_USAGE" -ge 90 ] || [ "$MEMORY_USAGE" -ge 90 ] || [ "$SSH_STATUS" = "inactive" ]; then
+if [ "$CPU_USAGE" -gt 85 ]; then
+    OVERALL_RISK="HIGH"
+elif [ "$DISK_USAGE" -ge 90 ] || [ "$MEMORY_USAGE" -ge 90 ]; then
+    OVERALL_RISK="HIGH"
+elif [ "$SSH_STATUS" = "inactive" ]; then
     OVERALL_RISK="HIGH"
 fi
 
 # ===== ALERT =====
+ALERT_LOG="$HOME/log-project/logs/alerts.log"
+
 if [ "$OVERALL_RISK" = "HIGH" ]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') | ALERT | $HOSTNAME | CPU: $CPU_USAGE% | MEM: $MEMORY_USAGE% | DISK: $DISK_USAGE%" >> "$ALERT_LOG"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') | ALERT | $HOSTNAME | CPU: $CPU_USAGE% | MEM: $MEMORY_USAGE% | DISK: $DISK_USAGE% | SSH: $SSH_STATUS" >> "$ALERT_LOG"
 fi
 
 # ===== SUMMARY =====
@@ -127,6 +145,7 @@ echo "CPU Load: $CPU_LOAD"
 echo "CPU Usage: $CPU_USAGE% ($CPU_STATUS)"
 echo "Disk Usage: $DISK_USAGE% ($DISK_STATUS)"
 echo "Memory Usage: $MEMORY_USAGE% ($MEM_STATUS)"
+echo "Temperature: ${TEMP}°C"
 echo "Uptime: $UPTIME_INFO"
 echo "Network RX: $RX_MB MB"
 echo "Network TX: $TX_MB MB"
@@ -135,15 +154,24 @@ echo "TX Rate: $TX_RATE MB/s"
 echo "SSH Status: $SSH_STATUS"
 echo "----------------------------------"
 echo "Overall Risk Level: $OVERALL_RISK"
+echo ""
+echo "Executive Summary: System risk level is $OVERALL_RISK."
 } > "$SUMMARY_LOG"
 
 echo "Summary log created: $SUMMARY_LOG"
 
-# ===== CENTRAL SYNC =====
+# ===== CENTRAL SYNC (to dev-logproject) =====
+
+# Remote folder on dev-logproject
 REMOTE_DIR="/home/brianhill/central-monitoring/AP-Monitoring/$HOSTNAME"
 
+# Make sure the directory exists on dev VM
 ssh "$CENTRAL_SERVER" "mkdir -p $REMOTE_DIR"
 
+# Copy the summary log to dev VM
 scp "$SUMMARY_LOG" "$CENTRAL_SERVER:$REMOTE_DIR/"
 
+# Copy optional logs if they exist
 [ -f "$ALERT_LOG" ] && scp "$ALERT_LOG" "$CENTRAL_SERVER:$REMOTE_DIR/"
+[ -f "$HISTORY_LOG" ] && scp "$HISTORY_LOG" "$CENTRAL_SERVER:$REMOTE_DIR/"
+[ -f "$DASHBOARD_LOG" ] && scp "$DASHBOARD_LOG" "$CENTRAL_SERVER:$REMOTE_DIR/"
