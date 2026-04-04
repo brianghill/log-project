@@ -11,7 +11,7 @@ fi
 source "$CONFIG_FILE"
 
 # ===== CENTRAL SERVER CONFIG =====
-CENTRAL_SERVER="brianhill@100.125.19.28"
+CENTRAL_SERVER="brianhill@104.131.76.75"
 
 # ===== HOST + DATE =====
 HOSTNAME=$(hostname)
